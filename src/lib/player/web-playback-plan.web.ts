@@ -17,9 +17,11 @@ import {
     pixelBitDepth,
     videoCodecName,
 } from "@/lib/webos/playback-capabilities"
-import type { MpvChapter, MpvExternalSubtitle } from "expo-mpv-player"
+import { describeTVAudioTrack } from "@/lib/webos/tv-audio"
+import type { MpvChapter, MpvExternalSubtitle, MpvSourceAudioTrack } from "expo-mpv-player"
 import React from "react"
 import { createDirectStreamSession, describeStreamCodecs, type DirectStreamSession, directStreamChapters } from "./direct-stream"
+import { streamAudioWarning, streamFailureMessage } from "./direct-stream-format"
 import { endKeptStream, keptDirectStreams } from "./kept-direct-stream"
 import { proxiedUrl } from "./online-proxy"
 import { getWatchHistoryResumePosition } from "./resume-position"
@@ -75,6 +77,26 @@ function toSubtitles(serverUrl: string, mediaInfo: MediaInfo | undefined): MpvEx
             title: subtitle.title,
             lang: subtitle.language,
         }]
+    })
+}
+
+/** A library file's audio tracks in file order, and how the TV takes each. */
+function toAudioTracks(mediaInfo: MediaInfo | undefined): MpvSourceAudioTrack[] {
+    return (mediaInfo?.audios ?? []).map(audio => describeTVAudioTrack({
+        codec: audio.codec,
+        channels: audio.channels || undefined,
+        language: audio.language,
+        title: audio.title,
+        default: audio.isDefault,
+    }))
+}
+
+/** Says why the player left an audio track (the web player switches on its own). */
+function announceAudioFallback(from: MpvSourceAudioTrack, to: MpvSourceAudioTrack) {
+    const name = to.title || to.language
+    log.info("Left an audio track the TV plays silently", { from: from.codec, to: to.codec, language: to.language })
+    toast.info(`Playing the ${name ? `${name} ` : "other "}audio track (${to.codec}): LG TVs play ${from.codec} with no or partial sound.`, {
+        visibilityTime: 6000,
     })
 }
 
@@ -176,6 +198,11 @@ async function resolveLibraryPlan(source: MobilePlaybackSource, forceTranscode: 
             if (forceTranscode && reasons.length === 0) summary.reasons = ["the TV could not decode the original file"]
         }
     }
+    if (plan.mediaInfoSummary!.mode === "direct") {
+        // Direct play: the TV's player starts on the file's default track, which may be one it plays silently.
+        plan.audioTracks = toAudioTracks(mediaInfo)
+        plan.onAudioTrackFallback = announceAudioFallback
+    }
 
     log.info("Playback plan", {
         sourceId: source.id,
@@ -199,13 +226,10 @@ function describeFileCodec(mediaInfo: MediaInfo | undefined) {
 /** The text for a decode error that the plan can't work around. */
 function decodeErrorMessage(source: MobilePlaybackSource, resolved: Resolved | null) {
     const base = "The TV could not decode this video"
+    // A torrent or debrid stream: name what LG's decoders don't take and what to do instead.
+    if (source.directStreamPlaybackId) return streamFailureMessage(describeStreamCodecs(source.mkvMetadata))
     if (!resolved?.library) {
-        const codecs = describeStreamCodecs(source.mkvMetadata)
-        const what = [codecs.video, ...codecs.audio].filter(Boolean).join(", ")
-        const audioHint = codecs.riskyAudio.length > 0
-            ? ` LG TVs don't play ${codecs.riskyAudio.join(" or ")} audio in video files; pick a release with AAC or AC-3 audio.`
-            : ""
-        return `${base}${what ? ` (${what})` : ""}.${audioHint} Only files in your library can be transcoded by the server; streams play as they are.`
+        return `${base}. Only files in your library can be transcoded by the server; streams play as they are.`
     }
     const summary = resolved.plan.mediaInfoSummary
     if (summary?.mode === "transcode") return `${base}, even after the server transcoded it to H.264.`
@@ -267,9 +291,9 @@ function useDirectStreamSession(source: MobilePlaybackSource | null) {
             const created = createDirectStreamSession(source)
             if (!created) return
             session = created
-            const { riskyAudio } = describeStreamCodecs(source.mkvMetadata)
-            if (riskyAudio.length > 0) {
-                toast.warning(`This TV may not play ${riskyAudio.join(" or ")} audio. If the video doesn't start, pick a release with AAC audio.`, { visibilityTime: 6000 })
+            const audioWarning = streamAudioWarning(describeStreamCodecs(source.mkvMetadata))
+            if (audioWarning) {
+                toast.warning(audioWarning, { visibilityTime: 6000 })
             }
         }
         keptDirectStreams.attach({ playbackId, mediaId: source.mediaId, episodeNumber: source.episodeNumber, source, session })
@@ -366,12 +390,14 @@ export function useWebPlaybackPlan(source: MobilePlaybackSource | null): WebPlay
                 externalSubtitles: NO_SUBTITLES,
                 mediaInfoSummary: {
                     mode: "direct",
-                    reasons: codecs.riskyAudio.map(name => `${name} audio`),
+                    reasons: [...codecs.videoProblems, ...codecs.riskyAudio.map(name => `${name} audio`)],
                     videoCodec: codecs.video,
                     audioCodec: codecs.audio.join(", ") || undefined,
                     resolution: codecs.resolution,
                 },
                 chapters: directStreamChapters(source.mkvMetadata),
+                audioTracks: codecs.audioTracks,
+                onAudioTrackFallback: announceAudioFallback,
                 streamedSubtitles: directStream.session.streamedSubtitles,
                 onMediaEvent: directStream.session.onMediaEvent,
                 subtitleFonts,
