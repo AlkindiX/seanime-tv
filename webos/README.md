@@ -273,6 +273,13 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
     on a canvas over the video. *Subtitle styling* under Audio & subtitles switches to
     plain text lines instead (what's left of the dialogue, without signs), which is also
     used when libass can't start on a TV.
+  - JASSUB draws when the browser reports a presented video frame
+    (`requestVideoFrameCallback`). webOS shows the video on its own hardware plane and
+    never reports one (seen on an LG C3, WebAppManager with Chrome 132), so libass got
+    every line and drew none, on a canvas left at 300x150. While no frames are reported,
+    the video's clock drives JASSUB instead (`manualRender`): about 30 times a second
+    while it plays, and once after a seek, a pause, a track change or new lines. libass
+    skips frames whose picture didn't change.
   - **SRT and WebVTT** are drawn as text in the subtitle size you pick.
   - **PGS** (image subtitles of Blu-ray rips) in torrent and debrid streams are shown as
     the server decodes them, placed where the disc puts them.
@@ -449,10 +456,9 @@ are released, so a long seek doesn't continue when you come back.
   takes the switch before playback starts), and that the client's auto-select picks what
   the server would. These were checked with unit tests against the server's code, not
   on a TV or a server.
-- libass on a TV: its speed with heavy typesetting, and loading its worker and wasm from
-  `file://` (they are read with XMLHttpRequest and handed over as blob URLs, as a worker
-  can't `fetch()` files). Checked in desktop Chromium over http. If it fails, subtitles
-  fall back to plain text. JASSUB's worker needs Chromium 80 for `type: "module"`; the
+- libass on a TV: draws ASS subtitles and signs on an LG C3 (webOS with Chrome 132,
+  installed from `file://`) since the video's clock drives it. Still to see: its speed with
+  heavy typesetting. If it fails, subtitles fall back to plain text. JASSUB's worker needs Chromium 80 for `type: "module"`; the
   build makes it a classic script, so webOS 6 may run it too.
 - PGS placement was checked with a test image, not a real Blu-ray track.
 - Leaving the player and resuming a kept stream: checked by typecheck, unit tests of the
