@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.system.Os
 import android.util.Log
@@ -13,6 +14,8 @@ import `is`.xyz.mpv.MPVLib
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.log2
 
 private const val TAG = "MPVLayerRenderer"
@@ -31,6 +34,32 @@ enum class VideoOutput(val mpvValue: String) {
  * and forwards state changes to its delegate on the main thread.
  */
 class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPVLib.LogObserver {
+
+    companion object {
+        // MPVLib calls wait for mpv's core. Run them in order here so a stalled decoder cannot block the UI thread.
+        private val workerThread = HandlerThread("mpv-worker").apply { start() }
+        private val worker = Handler(workerThread.looper)
+
+        fun run(block: () -> Unit) {
+            if (Looper.myLooper() == workerThread.looper) block() else worker.post(block)
+        }
+
+        fun runAndWait(timeoutMs: Long, block: () -> Unit): Boolean {
+            if (Looper.myLooper() == workerThread.looper) {
+                block()
+                return true
+            }
+            val done = CountDownLatch(1)
+            worker.post {
+                try {
+                    block()
+                } finally {
+                    done.countDown()
+                }
+            }
+            return done.await(timeoutMs, TimeUnit.MILLISECONDS)
+        }
+    }
 
     private fun isTvDevice(): Boolean {
         val manager = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
@@ -102,6 +131,7 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
     private var lastProgressUpdateTime: Long = 0
     private val progressIntervalMs: Long = 1000
 
+    @Volatile
     private var initialized = false
     private var surface: Surface? = null
 
@@ -123,6 +153,7 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         isTv -> "mediacodec,mediacodec-copy"
         else -> "mediacodec-copy"
     }
+    private var videoOutputClosed = false
     @Volatile
     private var hwdecResult: Int? = null
     @Volatile
@@ -160,6 +191,9 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
             }
         }
 
+        // libmpv has no CA store on Android and verifies by default, which fails every https source
+        MPVLib.setOptionString("tls-verify", "no")
+
         // cache & demuxer
         MPVLib.setOptionString("cache", "auto")
         MPVLib.setOptionString("cache-secs", "10")
@@ -185,7 +219,9 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         MPVLib.setOptionString("sub-ass-force-margins", "yes")
 
         // network reconnection
-        MPVLib.setOptionString("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5")
+        // TV reads time out after 5s (see load()), so keep retrying long enough to outlast a torrent waiting on pieces
+        val reconnectDelayMax = if (isTv) 60 else 5
+        MPVLib.setOptionString("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=$reconnectDelayMax")
 
         // playback behavior
         MPVLib.setOptionString("force-window", "no")
@@ -215,7 +251,8 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
     fun stop() {
         if (!initialized) return
         initialized = false
-        mainHandler.removeCallbacks(statsTask)
+        videoOutputClosed = false
+        worker.removeCallbacks(statsTask)
         statsLogged = false
         MPVLib.removeObserver(this)
         MPVLib.removeLogObserver(this)
@@ -239,7 +276,7 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         val previous = videoOutput
         videoOutput = output
 
-        if (!initialized) {
+        if (!initialized || videoOutputClosed) {
             Log.i(TAG, "Video output staged — from=${previous.mpvValue}, requestedVo=${output.mpvValue}")
             return
         }
@@ -264,6 +301,10 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         if (initialized) {
             MPVLib.attachSurface(surface)
             MPVLib.setPropertyString("force-window", "yes")
+            if (videoOutputClosed) {
+                videoOutputClosed = false
+                MPVLib.setPropertyString("vo", videoOutput.mpvValue)
+            }
             Log.i(TAG, "[PiP] attachSurface — attached, activeVo=${getActiveVideoOutput()}")
         }
     }
@@ -272,6 +313,10 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         this.surface = null
         Log.i(TAG, "[PiP] detachSurface — initialized=$initialized")
         if (initialized) {
+            // the video output can't survive losing its surface, so it reopens on the next attach
+            videoOutputClosed = true
+            MPVLib.setPropertyString("vo", "null")
+            MPVLib.setPropertyString("force-window", "no")
             MPVLib.detachSurface()
             Log.i(TAG, "[PiP] detachSurface — detached, activeVo=${getActiveVideoOutput()}")
         }
@@ -356,7 +401,7 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         isSeeking = false
         isLoading = true
         statsLogged = false
-        mainHandler.removeCallbacks(statsTask)
+        worker.removeCallbacks(statsTask)
         mainHandler.post { delegate?.onLoadingChanged(true) }
 
         currentUrl = url
@@ -366,9 +411,9 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
         restoreAudioId = audioId
         restoreSubtitleId = subtitleId
 
-        // http headers
+        // http headers, mpv reads this as a comma separated list so commas in values are escaped
         if (!headers.isNullOrEmpty()) {
-            val headerStr = headers.entries.joinToString("\r\n") { "${it.key}: ${it.value}" }
+            val headerStr = headers.entries.joinToString(",") { "${it.key}: ${it.value}".replace(",", "\\,") }
             MPVLib.setPropertyString("http-header-fields", headerStr)
         } else {
             MPVLib.setPropertyString("http-header-fields", "")
@@ -388,7 +433,13 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
 
         MPVLib.setPropertyDouble("video-zoom", log2(requestedVideoZoomScale.coerceAtLeast(1.0)))
 
-        MPVLib.command(arrayOf("loadfile", url, "replace"))
+        if (isTv) {
+            val isHls = url.substringBefore('?').endsWith(".m3u8")
+            MPVLib.setPropertyString("network-timeout", if (isHls) "60" else "5")
+        }
+
+        val loadUrl = if (isTv && url.startsWith("http://")) "lavf://$url" else url
+        MPVLib.command(arrayOf("loadfile", loadUrl, "replace"))
     }
 
     // -------------------------------------------------------------------
@@ -993,8 +1044,8 @@ class MPVLayerRenderer(private val context: Context) : MPVLib.EventObserver, MPV
 
     private fun scheduleStats(delayMs: Long) {
         if (statsLogged) return
-        mainHandler.removeCallbacks(statsTask)
-        mainHandler.postDelayed(statsTask, delayMs)
+        worker.removeCallbacks(statsTask)
+        worker.postDelayed(statsTask, delayMs)
     }
 
     private fun logStats() {

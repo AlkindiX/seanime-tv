@@ -76,6 +76,7 @@ import {
     Pressable as RNPressable,
     StatusBar,
     Text,
+    TVEventControl,
     useTVEventHandler,
     useWindowDimensions,
     View,
@@ -854,20 +855,16 @@ function PlayerScreenInner() {
             return
         }
 
-        if (event.eventType === "playPause") {
-            player.togglePlayPause()
+        // Remotes with separate media keys (LG's, some Android TV ones) send play and pause too.
+        if (event.eventType === "playPause" || event.eventType === "play" || event.eventType === "pause") {
+            if (tvKeyAction(event) === 0) return
+            if (event.eventType === "play") player.play()
+            else if (event.eventType === "pause") player.pause()
+            else player.togglePlayPause()
             controls.showControls()
             return
         }
 
-        // Remotes with separate media keys (LG's, some Android TV ones)
-        if (event.eventType === "play" || event.eventType === "pause") {
-            if (tvKeyAction(event) === 0) return
-            if (event.eventType === "play") player.play()
-            else player.pause()
-            controls.showControls()
-            return
-        }
         if (event.eventType === "fastForward" || event.eventType === "rewind") {
             if (tvKeyAction(event) === 0) return
             const direction = event.eventType === "fastForward" ? 1 : -1
@@ -963,6 +960,13 @@ function PlayerScreenInner() {
             controls.scheduleHide()
         }
     })
+
+    // tvOS only reports Menu to BackHandler while the menu key is enabled. Otherwise the native stack pops the player directly.
+    React.useEffect(() => {
+        if (!Platform.isTV || Platform.OS !== "ios") return
+        TVEventControl.enableTVMenuKey()
+        return () => TVEventControl.disableTVMenuKey()
+    }, [])
 
     React.useEffect(() => {
         if (!Platform.isTV) return

@@ -1,7 +1,7 @@
 {
   "name": "seanime-tenji",
   "main": "index.js",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "scripts": {
     "dev:start": "expo start -c",
     "dev:start:ios": "expo start -c --ios",
@@ -102,8 +102,6 @@
     "react-hook-form": "^7.90.0",
     "react-native": "npm:react-native-tvos@0.88.0-0",
     "react-native-gesture-handler": "~3.3.0",
-    "react-native-ios-context-menu": "^3.2.1",
-    "react-native-ios-utilities": "git+https://github.com/dominicstop/react-native-ios-utilities.git#v5.2.1",
     "react-native-mmkv": "^4.3.2",
     "react-native-nitro-modules": "^0.37.1",
     "react-native-reanimated": "4.7.1",
@@ -117,15 +115,7 @@
     "tailwind-merge": "^3.7.0",
     "tailwindcss": "^4.3.3",
     "tailwindcss-animate": "^1.0.7",
-    "uniwind": "^1.12.2",
-    "zeego": "^3.0.6"
-  },
-  "overrides": {
-    "zeego": {
-      "@react-native-menu/menu": "2.0.0",
-      "react-native-ios-context-menu": "3.2.1",
-      "react-native-ios-utilities": "git+https://github.com/dominicstop/react-native-ios-utilities.git#v5.2.1"
-    }
+    "uniwind": "^1.12.2"
   },
   "devDependencies": {
     "@react-native-tvos/config-tv": "0.1.7",
