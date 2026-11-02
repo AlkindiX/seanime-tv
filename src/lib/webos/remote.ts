@@ -1,7 +1,7 @@
 /**
  * Remote control input for the webOS build.
  *
- * Turns key events from the LG remote (and a desktop keyboard while
+ * Turns key events from the LG or Samsung remote (and a desktop keyboard while
  * developing) into what react-native-tvos gives the app natively: D-pad
  * focus movement, `useTVEventHandler` events and `hardwareBackPress`.
  */
@@ -39,8 +39,11 @@ type Listener = (event: TVRemoteEvent) => void
 type PointerListener = () => void
 type ClickListener = () => void
 
-/** webOS sends 461 for Back; Escape and Backspace stand in for it on a desktop. */
-const BACK_KEY_CODE = 461
+/**
+ * webOS sends 461 for Back and Samsung's Tizen 10009 (XF86Back); Escape and
+ * Backspace stand in for it on a desktop.
+ */
+const BACK_KEY_CODES = new Set([461, 10009])
 
 const LONG_PRESS_TYPES = new Set(["left", "right", "up", "down", "select"])
 
@@ -165,7 +168,7 @@ function releaseHeldKeys() {
 }
 
 function isBackKey(event: KeyboardEvent) {
-    if (event.keyCode === BACK_KEY_CODE || event.key === "GoBack" || event.key === "BrowserBack") return true
+    if (BACK_KEY_CODES.has(event.keyCode) || event.key === "GoBack" || event.key === "BrowserBack" || event.key === "XF86Back") return true
     if (event.key === "Escape") return true
     return event.key === "Backspace" && !isTextField(document.activeElement)
 }

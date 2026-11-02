@@ -13,6 +13,8 @@
     "dev:webos": "node ./webos/jassub.mjs public/jassub && EXPO_TV=1 SEANIME_WEBOS=1 expo start --web --clear --port 8083",
     "build:webos": "node ./webos/build.mjs",
     "serve:webos": "node ./webos/serve.mjs",
+    "build:tizen": "node ./tizen/build.mjs",
+    "serve:tizen": "node ./webos/serve.mjs 8090 dist/tizen/app",
     "dev:ios:offline": "expo start -c --ios --offline",
     "internal:dev:ios:device": "bash ./scripts/ios-device-build.sh",
     "internal:dev:android": "bash ./scripts/android-dev.sh phone",

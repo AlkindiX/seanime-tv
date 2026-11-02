@@ -14,6 +14,17 @@ test("LG remote keyCodes map to react-native-tvos event names", () => {
     assert.equal(remoteEventType(461, "GoBack"), undefined)
 })
 
+test("Samsung's own keyCodes map to the same event names", () => {
+    assert.equal(remoteEventType(10252, "MediaPlayPause"), "playPause")
+    assert.equal(remoteEventType(427, "ChannelUp"), "channelUp")
+    assert.equal(remoteEventType(428, "ChannelDown"), "channelDown")
+    // Shared with LG.
+    assert.equal(remoteEventType(415, "MediaPlay"), "play")
+    assert.equal(remoteEventType(19, "MediaPause"), "pause")
+    // Back is handled before the table, in remote.ts.
+    assert.equal(remoteEventType(10009, "XF86Back"), undefined)
+})
+
 test("number row and numpad digits are named like Android TV's", () => {
     for (let digit = 0; digit <= 9; digit++) {
         assert.equal(remoteEventType(48 + digit, String(digit)), String(digit))

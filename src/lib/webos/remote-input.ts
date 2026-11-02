@@ -5,9 +5,10 @@
  */
 
 /**
- * LG remotes report these keyCodes on every webOS version. Event names are
- * the ones react-native-tvos uses on Android TV, so the same handler works
- * on both (digits included: Android TV sends "0" to "9").
+ * LG remotes report these keyCodes on every webOS version, and Samsung's share
+ * most of them; the Samsung-only codes are listed apart. Event names are the
+ * ones react-native-tvos uses on Android TV, so the same handler works on
+ * both (digits included: Android TV sends "0" to "9").
  */
 const KEY_CODES: Record<number, string> = {
     37: "left",
@@ -29,6 +30,10 @@ const KEY_CODES: Record<number, string> = {
     404: "green",
     405: "yellow",
     406: "blue",
+    // Samsung (Tizen): play/pause and CH+/CH-.
+    10252: "playPause",
+    427: "channelUp",
+    428: "channelDown",
 }
 
 // The number row and the numpad.

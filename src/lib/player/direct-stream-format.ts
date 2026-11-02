@@ -6,6 +6,7 @@ import type { MKVParser_Metadata, MKVParser_SubtitleEvent, MKVParser_TrackInfo, 
 import type { MpvStreamedSubtitleLine, MpvSubtitleImage } from "expo-mpv-player"
 import { streamedLineKey } from "../../../modules/expo-mpv-player/src/web/subtitles.ts"
 import { h264ProfileProblem } from "../webos/playback-capabilities.ts"
+import { tvBrand } from "../webos/tizen-platform.ts"
 import { describeTVAudioTrack, mkvAudioCodec, type TVAudioTrack } from "../webos/tv-audio.ts"
 
 /** How long an image subtitle stays up when the server sends no duration. */
@@ -196,23 +197,24 @@ export function streamAudioWarning(codecs: StreamCodecs): string | null {
     const what = `This TV may not play ${codecs.riskyAudio.join(" or ")} audio`
     const multichannelFlac = codecs.audioTracks.some(track => track.support === "broken" && track.codec.startsWith("FLAC"))
     return multichannelFlac
-        ? `${what}: LG TVs often play FLAC with more than two channels silently. If there's no sound, pick a release with AAC, AC-3 or E-AC-3 audio.`
+        ? `${what}: ${tvBrand()} TVs often play FLAC with more than two channels silently. If there's no sound, pick a release with AAC, AC-3 or E-AC-3 audio.`
         : `${what}. If the video doesn't start, pick a release with AAC, AC-3 or E-AC-3 audio.`
 }
 
 /**
  * The error for a torrent or debrid stream the TV could not play: what is
- * in it, what LG's decoders don't take, and what to do. The server
+ * in it, what the TV maker's decoders don't take, and what to do. The server
  * (Seanime 3.10) transcodes library files only.
  */
 export function streamFailureMessage(codecs: StreamCodecs): string {
+    const brand = tvBrand()
     const what = [codecs.video, ...codecs.audio].filter(Boolean).join(", ")
     const parts = [`The TV could not play this stream${what ? ` (${what})` : ""}.`]
-    if (codecs.videoProblems.length > 0) parts.push(`LG TVs don't decode ${codecs.videoProblems.join(" or ")}.`)
-    if (hasFlac(codecs.riskyAudio)) {
+    if (codecs.videoProblems.length > 0) parts.push(`${brand} TVs don't decode ${codecs.videoProblems.join(" or ")}.`)
+    if (hasFlac(codecs.riskyAudio) && brand === "LG") {
         parts.push("LG lists FLAC for music files only, and many LG TVs don't play it in a video.")
     } else if (codecs.riskyAudio.length > 0) {
-        parts.push(`LG TVs may not play ${codecs.riskyAudio.join(" or ")} audio in a video.`)
+        parts.push(`${brand} TVs may not play ${codecs.riskyAudio.join(" or ")} audio in a video.`)
     }
 
     const wanted: string[] = []

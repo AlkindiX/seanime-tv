@@ -10,8 +10,13 @@
  * TrueHD out of a file's audio tracks. A TV may also wait forever on audio
  * it doesn't take. Opus is listed for MKV from webOS 24 only.
  *
+ * Samsung's Tizen TVs (2022 and later) list the same Dolby and AAC audio, no
+ * TrueHD, and no DTS since 2018; FLAC is otherwise taken as on LG. That part
+ * is from Samsung's specs and Jellyfin's Tizen profile, not checked on a TV.
+ *
  * No react-native imports, so the node tests can load it.
  */
+import { currentTVPlatform, type TVPlatform } from "./tizen-platform.ts"
 
 /** plays: listed by LG. risky: not listed, may or may not play. broken: known to give no (or partial) sound. */
 export type TVAudioSupport = "plays" | "risky" | "broken"
@@ -79,7 +84,7 @@ export function audioTrackLabel(codec: string, channels?: number) {
     return layout ? `${audioCodecLabel(codec)} ${layout}` : audioCodecLabel(codec)
 }
 
-export function tvAudioSupport(codec: string, channels?: number): TVAudioSupport {
+export function tvAudioSupport(codec: string, channels?: number, platform: TVPlatform = currentTVPlatform()): TVAudioSupport {
     switch (normalize(codec)) {
         case "aac":
         case "ac3":
@@ -91,14 +96,16 @@ export function tvAudioSupport(codec: string, channels?: number): TVAudioSupport
             return channels !== undefined && channels > 2 ? "broken" : "risky"
         case "truehd":
             return "broken"
+        case "dts":
+            return platform === "tizen" ? "broken" : "risky"
         default:
             return "risky"
     }
 }
 
 /** webOS leaves these out of a file's audio tracks (and starts on another one). */
-export function unlistedOnWebOS(codec: string) {
-    return normalize(codec) === "truehd"
+export function unlistedOnWebOS(codec: string, platform: TVPlatform = currentTVPlatform()) {
+    return platform === "webos" && normalize(codec) === "truehd"
 }
 
 /** An audio track of a file, as the web player is told about it. */
