@@ -3,6 +3,7 @@ import { router } from "expo-router"
 import * as React from "react"
 import { getDeviceInfo } from "./device-info"
 import { onPointerActivity, onPointerClick, setFallbackBackHandler } from "./remote"
+import { registerTizenKeys } from "./tizen-platform"
 
 // NetInfo's web build probes "/" for internet reachability, which a file://
 // app can't fetch. Connectivity comes from navigator.onLine instead.
@@ -26,6 +27,11 @@ export function useWebOSRuntime() {
     // Ask the TV about itself early, so the first playback doesn't wait for it.
     React.useEffect(() => {
         void getDeviceInfo()
+    }, [])
+
+    // Samsung TVs only send media, colour and number keys once they're registered.
+    React.useEffect(() => {
+        registerTizenKeys()
     }, [])
 }
 

@@ -3,6 +3,7 @@
  * document events webOS adds). Everything degrades to a no-op in a desktop
  * browser so the webOS build can be developed there.
  */
+import { exitTizenApp } from "./tizen-platform.ts"
 
 type WebOSSystem = {
     platformBack?: () => void
@@ -44,7 +45,8 @@ export function findPlatformBack(w: WebOSWindow): (() => void) | null {
 /**
  * Back on the first screen hands control back to the TV, as LG's guidelines
  * ask: webOS 6 and later show the system's exit popup, older releases go to
- * the launcher. `window.close()` (no popup) is only for desktop browsers.
+ * the launcher. Samsung TVs close the app through `tizen.application`.
+ * `window.close()` (no popup) is only for desktop browsers.
  */
 export function exitApp() {
     const platformBack = findPlatformBack(window as WebOSWindow)
@@ -52,6 +54,7 @@ export function exitApp() {
         platformBack()
         return
     }
+    if (exitTizenApp()) return
     window.close()
 }
 
