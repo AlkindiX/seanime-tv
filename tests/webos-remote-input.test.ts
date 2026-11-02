@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { createWheelStepper, isDigitEventType, remoteEventType } from "../src/lib/webos/remote-input.ts"
+import { createRepeatGate, createWheelStepper, isDigitEventType, remoteEventType } from "../src/lib/webos/remote-input.ts"
 
 test("LG remote keyCodes map to react-native-tvos event names", () => {
     assert.equal(remoteEventType(403, ""), "red")
@@ -57,4 +57,25 @@ test("a fast spin moves at most once per interval and doesn't queue steps", () =
     assert.equal(step(1, 0, 200), 1)
     // The leftover travel was capped below one step.
     assert.equal(step(0.5, 0, 400), 0)
+})
+
+test("held-key repeats wait for the last step to be drawn", () => {
+    const gate = createRepeatGate(250)
+    assert.equal(gate.blocked(0), false)
+
+    const drawn = gate.stepped(100)
+    assert.equal(gate.blocked(130), true)
+    drawn()
+    assert.equal(gate.blocked(140), false)
+})
+
+test("a repeat goes through once the wait runs out, and stale frames don't release a newer step", () => {
+    const gate = createRepeatGate(250)
+    const first = gate.stepped(0)
+    assert.equal(gate.blocked(249), true)
+    assert.equal(gate.blocked(250), false)
+
+    gate.stepped(300)
+    first()
+    assert.equal(gate.blocked(310), true)
 })
