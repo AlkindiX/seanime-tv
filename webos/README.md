@@ -392,6 +392,12 @@ transcoding.
   front, and cards re-render only when their own data changes. Measured in desktop Edge
   slowed to about TV speed: arrow keys use a third to a fifth of the CPU they did, and
   going back to the library blocks the screen 15-30 % less.
+- **Card images.** Covers in rows (and episode and character cards) load only when the
+  card is within half a screen of view, in any direction, and are dropped once it is a
+  full screen away; coming back reloads them from the browser's cache
+  (`src/lib/webos/viewport-tracker.ts`, `tv-lazy-image.tsx`). On Discover that keeps
+  50-95 covers in the page instead of 130-140, and in desktop Edge slowed to TV speed a
+  held Right arrow no longer drops frames. Android TV and tvOS load images as before.
 
 ## Remote control
 

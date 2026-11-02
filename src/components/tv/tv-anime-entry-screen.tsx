@@ -1,4 +1,5 @@
 import { requestTVFocus } from "@/components/tv/tv-native"
+import { TVLazyImage } from "@/components/tv/tv-lazy-image"
 import type {
     Anime_Episode,
     AL_AnimeDetailsById_Media_Characters_Edges,
@@ -761,7 +762,7 @@ const TVCharacterCard = React.memo(function TVCharacterCard({ edge }: TVCharacte
                 ]}
             >
                 {image ? (
-                    <Image
+                    <TVLazyImage
                         source={{ uri: image }}
                         style={{ width: "100%", height: "100%" }}
                         contentFit="cover"

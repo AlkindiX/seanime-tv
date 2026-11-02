@@ -8,7 +8,7 @@ server (a self-hosted anime/manga media server). One Expo / React Native codebas
 | Android, iOS (phone) | Expo native builds | libmpv (`modules/expo-mpv-player`) |
 | Android TV, tvOS | react-native-tvos (`EXPO_TV=1`) | libmpv |
 | **LG webOS TV** | the TV UI as a web app via react-native-web (`SEANIME_WEBOS=1`), packaged as an `.ipk` | HTML5 `<video>` (`MpvPlayerView.web.tsx`) |
-| **Samsung Tizen TV** (2022+) | the same web app (same bundle), packaged as a `.wgt` by `tizen/build.mjs` | HTML5 `<video>` |
+| **Samsung Tizen TV** (2021+) | the same web app, lowered for Chromium 76 and packaged as a `.wgt` by `tizen/build.mjs` | HTML5 `<video>` |
 
 Most recent work is on **webOS**; `webos/README.md` is its user-facing reference and
 lists what is not yet verified on a real TV. `tizen/README.md` covers Samsung (untested on a TV).
@@ -77,6 +77,9 @@ tests/*.test.ts           node:test unit tests (pure modules only)
   password), `fetch()` of local files fails (use XHR, see `web/libass.ts`), workers
   load from blob URLs, and `install.ts` keeps the document URL fixed while routing.
 - Target browsers: webOS 6 = Chromium 79 (build target), webOS 22 = 87, webOS 23 (LG C3) = 94.
+  Samsung: Tizen 6.0 (2021) = Chromium 76 (the Tizen build's target, `chrome` in
+  `buildWebApp`), 6.5 (2022) = 85, 7.0 = 94. Don't rely on CSS `min()`/`max()`/`clamp()`
+  (Chromium 79), which can't be lowered.
   `webos/build.mjs` lowers JS/CSS and adds core-js polyfills; `css-compat.ts` covers CSS gaps.
 - `Platform.OS === "web"` means webOS **or Samsung Tizen** in this repo; `Platform.isTV` is
   true there too. Tell them apart at runtime with `tizen-platform.ts` (`window.tizen`:

@@ -107,8 +107,11 @@ function step(now: number) {
             continue
         }
 
-        // A frame late after the app was hidden doesn't jump.
-        const elapsed = Math.min(now - animation.time, 100)
+        // A frame late after the app was hidden doesn't jump. A frame's time is
+        // when it began, which can be before the key press that started this
+        // scroll; a negative step would head the wrong way, and at the list's
+        // edge the browser refuses it and the scroll ends as stuck.
+        const elapsed = Math.min(Math.max(0, now - animation.time), 100)
         animation.time = now
         const share = 1 - Math.exp(-elapsed / TIME_CONSTANT_MS)
 

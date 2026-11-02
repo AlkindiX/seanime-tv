@@ -1,7 +1,7 @@
 import type { Anime_Episode } from "@/api/generated/types"
 import { TVFocusScaleView, usePreferredFocus, useTVFocus } from "@/components/tv/tv-focus"
+import { TVLazyImage } from "@/components/tv/tv-lazy-image"
 import { TV, tvSize } from "@/components/tv/tv-scale"
-import { Image } from "expo-image"
 import { LinearGradient } from "expo-linear-gradient"
 import { Ionicons } from "@/lib/icons/Ionicons"
 import * as React from "react"
@@ -92,7 +92,7 @@ export const TVEpisodeCard = React.memo(
                                 backgroundColor: cssBlur ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.0)",
                             }}
                         >
-                            <Image
+                            <TVLazyImage
                                 source={shownImage ? { uri: shownImage } : undefined}
                                 style={{ width: "100%", height: "100%" }}
                                 contentFit="cover"

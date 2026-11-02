@@ -68,6 +68,18 @@ test("pressing again mid-scroll extends the movement instead of restarting it", 
     assert.equal(node.scrollLeft, 600)
 })
 
+test("a frame stamped before the key press doesn't start the scroll backwards", () => {
+    const node = scroller()
+    // The key is handled a few ms into a frame; that frame's callbacks get its start time.
+    animateScroll(node as unknown as HTMLElement, { x: 500 })
+    const due = frames
+    frames = []
+    for (const frame of due) frame(now - 8)
+    assert.ok(node.scrollLeft >= 0 && scrollTarget(node as unknown as HTMLElement).x === 500, "still heading right")
+    runFrames(60)
+    assert.equal(node.scrollLeft, 500)
+})
+
 test("the wheel or a drag scrolling the same list takes over", () => {
     const node = scroller()
     animateScroll(node as unknown as HTMLElement, { x: 800 })

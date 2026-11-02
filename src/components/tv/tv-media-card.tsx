@@ -7,11 +7,11 @@ import type {
 import { useAnimeLibraryEntryDataValue, useMediaEntryListDataValue } from "@/atoms/anilist-collection.atoms"
 import { useMediaCardSettings } from "@/atoms/server.atoms"
 import { TVFocusScaleView, usePreferredFocus, useTVFocus } from "@/components/tv/tv-focus"
+import { TVLazyImage } from "@/components/tv/tv-lazy-image"
 import { TVScoreBadge } from "@/components/tv/tv-score-badge"
 import { TV, tvSize } from "@/components/tv/tv-scale"
 import { Ionicons } from "@/lib/icons/Ionicons"
 import { animeCardStats, mediaTitle } from "@/lib/media-metadata"
-import { Image } from "expo-image"
 import * as React from "react"
 import { Platform, Pressable, Text, View } from "react-native"
 
@@ -111,7 +111,7 @@ export const TVMediaCard = React.memo(function TVMediaCard({
                     }}
                 >
                     {blurAdult && CSS_BLUR ? null : (
-                        <Image
+                        <TVLazyImage
                             source={image ? { uri: image } : undefined}
                             style={{ width: "100%", height: "100%" }}
                             contentFit="cover"
