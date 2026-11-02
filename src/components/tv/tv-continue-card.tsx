@@ -1,13 +1,28 @@
-import { useServerStatus } from "@/atoms/server.atoms"
+import { serverStatusAtom } from "@/atoms/server.atoms"
 import type { ContinueWatchingItem } from "@/hooks/use-anime-library-collection"
-import { getContinueWatchingSpoilerActive, getEpisodeSpoilerState } from "@/lib/anime-spoilers"
+import { getContinueWatchingSpoilerActive, getEpisodeSpoilerState, getSpoilerSafeAnimeImage } from "@/lib/anime-spoilers"
+import { atom, useAtomValue } from "jotai"
 import * as React from "react"
 import { TVEpisodeCard } from "./tv-episode-card"
 import { Pressable } from "react-native"
 
+/**
+ * Continue watching hides spoilers for every card alike (the episode number
+ * doesn't matter), so the cards read just these two flags and don't re-render
+ * on every server status refetch.
+ */
+const continueSpoilerAtom = atom(get => {
+    const status = get(serverStatusAtom)
+    return getEpisodeSpoilerState(status, { spoilerActive: getContinueWatchingSpoilerActive(status) })
+})
+const hideThumbnailAtom = atom(get => get(continueSpoilerAtom).hideThumbnail)
+const hideTitleAtom = atom(get => get(continueSpoilerAtom).hideTitle)
+
 type Props = {
     item: ContinueWatchingItem
-    onPress: () => void
+    onPress?: () => void
+    /** Called with `item`; one handler for the whole row keeps React.memo working. */
+    onPressItem?: (item: ContinueWatchingItem) => void
     preferred?: boolean
     progressPercent?: number
 }
@@ -17,17 +32,16 @@ export const TVContinueCard = React.memo(
         function TVContinueCard({
             item,
             onPress,
+            onPressItem,
             preferred,
             progressPercent,
             ...props
         }, ref) {
-            const serverStatus = useServerStatus()
+            const hideThumbnail = useAtomValue(hideThumbnailAtom)
+            const hideTitle = useAtomValue(hideTitleAtom)
             const episode = item.episode
             const media = episode.baseAnime
-            const spoiler = getEpisodeSpoilerState(serverStatus, {
-                episodeNumber: episode.progressNumber || episode.episodeNumber,
-                spoilerActive: getContinueWatchingSpoilerActive(serverStatus),
-            })
+            const handlePress = onPress ?? (() => onPressItem?.(item))
             const title = media?.title?.userPreferred
                 ?? media?.title?.english
                 ?? media?.title?.romaji
@@ -44,14 +58,15 @@ export const TVContinueCard = React.memo(
                     duration={episode.episodeMetadata?.length}
                     badge={episode.displayTitle}
                     title={title}
-                    subtitle={spoiler.hideTitle
+                    subtitle={hideTitle
                         ? `Episode ${episode.episodeNumber}`
                         : episode.episodeTitle || `Episode ${episode.episodeNumber}`}
-                    onPress={onPress}
+                    onPress={handlePress}
                     preferred={preferred}
                     progressPercent={progressPercent}
                     filler={episode.episodeMetadata?.isFiller}
-                    blurred={spoiler.hideThumbnail}
+                    blurred={hideThumbnail}
+                    blurredImage={getSpoilerSafeAnimeImage(media)}
                     recyclingKey={`${media?.id ?? "episode"}-${episode.episodeNumber}`}
                     {...props}
                 />

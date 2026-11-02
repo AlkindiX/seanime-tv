@@ -29,7 +29,7 @@ import { toast } from "@/lib/utils/toast"
 import { useDeviceSummary } from "@/lib/webos/use-device-summary"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { Image } from "expo-image"
-import { router } from "expo-router"
+import { router, useIsFocused } from "expo-router"
 import { useAtomValue } from "jotai"
 import * as React from "react"
 import { ActivityIndicator, Animated, Platform, Pressable, ScrollView, Text, View } from "react-native"
@@ -244,16 +244,21 @@ function DiagnosticsSection({ onClearLogs }: { onClearLogs: () => void }) {
     const receiverRef = React.useRef<RowRef>(null)
 
     // the entry count, receiver errors and "12s ago" change without any React state
-    // changing; `now` is state so the React Compiler doesn't cache the "ago" text
+    // changing; `now` is state so the React Compiler doesn't cache the "ago" text.
+    // Only while Settings is on screen: tabs stay mounted after you leave them.
+    const isFocused = useIsFocused()
     const [now, setNow] = React.useState(Date.now)
     React.useEffect(() => {
-        const timer = setInterval(() => {
+        if (!isFocused) return
+        const refresh = () => {
             setEntryCount(getOfflineLogEntries().length)
             setReceiverError(getDebugLogReceiverLastError())
             setNow(Date.now())
-        }, 2000)
+        }
+        refresh()
+        const timer = setInterval(refresh, 2000)
         return () => clearInterval(timer)
-    }, [])
+    }, [isFocused])
 
     const toggleLogging = React.useCallback(() => {
         const next = !loggingEnabled

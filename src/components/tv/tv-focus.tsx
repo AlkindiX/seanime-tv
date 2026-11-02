@@ -329,11 +329,42 @@ export function useTVFocusLogger() {
     })
 }
 
-export function usePreferredFocus(preferred?: boolean): boolean {
-    try {
-        const segments = useSegments()
-        return segments.includes("entry") ? !!preferred : false
-    } catch {
-        return false
+/**
+ * Whether an `entry` route is on screen, kept outside React. Every card and
+ * button asks usePreferredFocus, and reading the route there re-rendered all
+ * of them (on every mounted screen) on each navigation; now one tracker reads
+ * it and only controls passing `preferred` subscribe.
+ */
+let onEntryRoute = false
+const entryRouteListeners = new Set<() => void>()
+
+function subscribeEntryRoute(listener: () => void) {
+    entryRouteListeners.add(listener)
+    return () => {
+        entryRouteListeners.delete(listener)
     }
+}
+
+const subscribeNothing = () => () => {}
+const readEntryRoute = () => onEntryRoute
+const readFalse = () => false
+
+/** Mounted once inside the router; keeps `onEntryRoute` current. */
+export function TVEntryRouteTracker() {
+    const onEntry = useSegments().includes("entry")
+
+    React.useEffect(() => {
+        if (onEntryRoute === onEntry) return
+        onEntryRoute = onEntry
+        for (const listener of Array.from(entryRouteListeners)) listener()
+    }, [onEntry])
+
+    return null
+}
+
+export function usePreferredFocus(preferred?: boolean): boolean {
+    return React.useSyncExternalStore(
+        preferred ? subscribeEntryRoute : subscribeNothing,
+        preferred ? readEntryRoute : readFalse,
+    )
 }

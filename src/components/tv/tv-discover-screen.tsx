@@ -14,14 +14,13 @@ import {
 import { OfflineBanner } from "@/components/shared/offline-banner"
 import { TV, TVButton, TVHeroCarousel, type TVHeroItem, TVPageSkeleton, TVPillButton, TVShelf, tvSize } from "@/components/tv"
 import { trendingHeroItem } from "@/components/tv/tv-hero-items"
-import { TVNavScrim } from "@/components/tv/tv-nav-scrim"
+import { SCRIM_SCROLL_THRESHOLD, TVNavScrim, useScrolledPast } from "@/components/tv/tv-nav-scrim"
 import { useIsServerConnected } from "@/lib/offline"
 import { SEARCH_MEDIA_GENRES } from "@/lib/search/search-constants"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import { router, useIsFocused } from "expo-router"
 import * as React from "react"
-import { FlatList, Pressable, Text, TVFocusGuideView, View } from "react-native"
-import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated"
+import { FlatList, Platform, Pressable, ScrollView, Text, TVFocusGuideView, View } from "react-native"
 
 type Shelf = {
     key: string
@@ -30,12 +29,9 @@ type Shelf = {
 }
 
 export function TVDiscoverScreen() {
-    const scrollY = useSharedValue(0)
-    const scrollHandler = useAnimatedScrollHandler({
-        onScroll: (event) => {
-            scrollY.value = event.contentOffset.y
-        },
-    })
+    // Only the webOS nav scrim follows the scroll (it fades in with a CSS
+    // transition once the hero scrolls away).
+    const [scrolled, onScroll] = useScrolledPast(SCRIM_SCROLL_THRESHOLD)
     const isFocused = useIsFocused()
     const isConnected = useIsServerConnected()
     const serverStatus = useServerStatus()
@@ -135,12 +131,12 @@ export function TVDiscoverScreen() {
 
     return (
         <View className="flex-1 bg-background">
-            <Animated.ScrollView
+            <ScrollView
                 style={{ flex: 1 }}
                 fadingEdgeLength={{ start: TV.navInset + tvSize(18), end: 0 }}
                 contentContainerStyle={{ paddingBottom: tvSize(80), gap: TV.sectionGap }}
                 showsVerticalScrollIndicator={false}
-                onScroll={scrollHandler}
+                onScroll={Platform.OS === "web" ? onScroll : undefined}
                 scrollEventThrottle={16}
             >
                 <TVHeroCarousel
@@ -211,8 +207,8 @@ export function TVDiscoverScreen() {
                         first={heroItems.length === 0 && index === 0}
                     />
                 ))}
-            </Animated.ScrollView>
-            <TVNavScrim scrollY={scrollY} />
+            </ScrollView>
+            <TVNavScrim shown={scrolled} />
         </View>
     )
 }

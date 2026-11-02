@@ -169,6 +169,10 @@ function getTorrentCardTitle(
     return "Batch";
 }
 
+function torrentKey(torrent: HibikeTorrent_AnimeTorrent, index: number) {
+    return String(torrent.infoHash || torrent.downloadUrl || index);
+}
+
 function formatProviderName(provider: string) {
     return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
@@ -322,13 +326,72 @@ export function TVTorrentStreamPickerDrawer({
         [filePreviews],
     );
 
+    // The cards' select handlers read the current selection from here, so
+    // they stay the same function and choosing a release re-renders only
+    // the two cards whose `isSelected` changed.
+    const selectionRef = React.useRef({
+        selectedTorrent,
+        selectedFileId,
+        onSelectTorrent,
+        onConfirmTorrentSelection,
+        onSelectFileId,
+        onConfirmFileSelection,
+    });
+    React.useLayoutEffect(() => {
+        selectionRef.current = {
+            selectedTorrent,
+            selectedFileId,
+            onSelectTorrent,
+            onConfirmTorrentSelection,
+            onSelectFileId,
+            onConfirmFileSelection,
+        };
+    });
+
     const selectTorrent = React.useCallback((torrent: HibikeTorrent_AnimeTorrent) => {
-        if (isSameTorrent(selectedTorrent, torrent)) {
-            onConfirmTorrentSelection();
+        const current = selectionRef.current;
+        if (isSameTorrent(current.selectedTorrent, torrent)) {
+            current.onConfirmTorrentSelection();
         } else {
-            onSelectTorrent(torrent);
+            current.onSelectTorrent(torrent);
         }
-    }, [onSelectTorrent, selectedTorrent, onConfirmTorrentSelection]);
+    }, []);
+
+    const selectFile = React.useCallback((id: string) => {
+        const current = selectionRef.current;
+        if (current.selectedFileId === id) {
+            current.onConfirmFileSelection();
+        } else {
+            current.onSelectFileId(id);
+        }
+    }, []);
+
+    const renderTorrent = React.useCallback(({ item }: { item: HibikeTorrent_AnimeTorrent }) => (
+        <TVTorrentCard
+            torrent={item}
+            episodes={episodes}
+            metadata={item.infoHash
+                ? torrentMetadataByInfoHash?.[item.infoHash]
+                : undefined}
+            isCached={isTorrentCached(item.infoHash, cacheSet)}
+            isSelected={isSameTorrent(selectedTorrent, item)}
+            onSelect={selectTorrent}
+        />
+    ), [cacheSet, episodes, selectTorrent, selectedTorrent, torrentMetadataByInfoHash]);
+
+    const renderFile = React.useCallback(({ item }: { item: (typeof previews)[number] }) => {
+        const fileId = getFileSelectionValue(item);
+        return (
+            <TVFileCard
+                id={fileId}
+                name={item.displayTitle || item.displayPath}
+                detail={item.displayPath}
+                isLikely={item.isLikely}
+                isSelected={selectedFileId === fileId}
+                onSelect={selectFile}
+            />
+        );
+    }, [selectFile, selectedFileId]);
 
     const subtitle = pickerStage === "files"
         ? "Select File"
@@ -690,7 +753,12 @@ export function TVTorrentStreamPickerDrawer({
                     {isLoadingFilePreviews ? (
                         <CenteredSpinner />
                     ) : previews.length > 0 ? (
-                        <ScrollView
+                        // A batch can hold hundreds of files: only the ones
+                        // near the screen are rendered.
+                        <FlatList
+                            data={previews}
+                            renderItem={renderFile}
+                            keyExtractor={getFileSelectionValue}
                             contentContainerStyle={{
                                 gap: tvSize(14),
                                 paddingHorizontal: tvSize(30),
@@ -698,29 +766,11 @@ export function TVTorrentStreamPickerDrawer({
                             }}
                             style={{ flex: 1 }}
                             showsVerticalScrollIndicator={false}
-                        >
-                            {previews.map((file) => {
-                                const fileId = getFileSelectionValue(file);
-
-                                return (
-                                    <TVFileCard
-                                        key={fileId}
-                                        id={fileId}
-                                        name={file.displayTitle || file.displayPath}
-                                        detail={file.displayPath}
-                                        isLikely={file.isLikely}
-                                        isSelected={selectedFileId === fileId}
-                                        onSelect={(id) => {
-                                            if (selectedFileId === id) {
-                                                onConfirmFileSelection();
-                                            } else {
-                                                onSelectFileId(id);
-                                            }
-                                        }}
-                                    />
-                                );
-                            })}
-                        </ScrollView>
+                            removeClippedSubviews={false}
+                            initialNumToRender={8}
+                            maxToRenderPerBatch={8}
+                            windowSize={5}
+                        />
                     ) : (
                         <Text
                             className="text-white/40 text-center py-20"
@@ -743,7 +793,11 @@ export function TVTorrentStreamPickerDrawer({
                             <CenteredSpinner />
                         </View>
                     ) : torrents.length > 0 ? (
-                        <ScrollView
+                        // Cards vary in height (titles wrap), so no getItemLayout.
+                        <FlatList
+                            data={torrents}
+                            renderItem={renderTorrent}
+                            keyExtractor={torrentKey}
                             contentContainerStyle={{
                                 gap: tvSize(16),
                                 paddingHorizontal: tvSize(30),
@@ -752,25 +806,11 @@ export function TVTorrentStreamPickerDrawer({
                             }}
                             style={{ flex: 1 }}
                             showsVerticalScrollIndicator={false}
-                        >
-                            {torrents.map((torrent, index) => (
-                                <TVTorrentCard
-                                    key={String(
-                                        torrent.infoHash
-                                        || torrent.downloadUrl
-                                        || index,
-                                    )}
-                                    torrent={torrent}
-                                    episodes={episodes}
-                                    metadata={torrent.infoHash
-                                        ? torrentMetadataByInfoHash?.[torrent.infoHash]
-                                        : undefined}
-                                    isCached={isTorrentCached(torrent.infoHash, cacheSet)}
-                                    isSelected={isSameTorrent(selectedTorrent, torrent)}
-                                    onSelect={selectTorrent}
-                                />
-                            ))}
-                        </ScrollView>
+                            removeClippedSubviews={false}
+                            initialNumToRender={8}
+                            maxToRenderPerBatch={8}
+                            windowSize={5}
+                        />
                     ) : (
                         <Text
                             className="text-white/40 text-center py-20"

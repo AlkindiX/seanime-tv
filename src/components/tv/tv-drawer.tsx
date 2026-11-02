@@ -2,7 +2,22 @@ import { TVButton } from "@/components/tv/tv-focus"
 import { tvSize } from "@/components/tv/tv-scale"
 import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
-import { Animated, Modal, Pressable, Text, View, TVFocusGuideView, ViewStyle } from "react-native"
+import { Animated, Modal, Platform, Pressable, Text, View, TVFocusGuideView, ViewStyle } from "react-native"
+
+/**
+ * webOS: the panel slides in with the Web Animations API (transform only, run
+ * by the compositor). Animated has no native driver on react-native-web, so
+ * `useNativeDriver` there still moves the panel from JavaScript every frame.
+ * Closing isn't animated on any platform: the drawer unmounts when `open`
+ * turns false.
+ */
+const WEB_SLIDE = Platform.OS === "web"
+const SLIDE_MS = 220
+/**
+ * The panel: a plain View on webOS, whose ref stays the same between renders
+ * (Animated.View's changes with its props, which would restart the slide).
+ */
+const DrawerPanel = (WEB_SLIDE ? View : Animated.View) as typeof Animated.View
 
 type TVDrawerProps = {
     open: boolean
@@ -42,10 +57,11 @@ export function TVDrawer({
             if (open) onShowRef.current?.()
             return
         }
+        if (WEB_SLIDE) return
 
         Animated.timing(slideAnim, {
             toValue: open ? 0 : width,
-            duration: 220,
+            duration: SLIDE_MS,
             useNativeDriver: true,
         }).start(({ finished }) => {
             if (finished && open) {
@@ -53,6 +69,33 @@ export function TVDrawer({
             }
         })
     }, [inline, open, width])
+
+    // webOS: runs when the panel's node mounts (each time the drawer opens)
+    // and with null when it unmounts, which stops a slide still running so
+    // `onShow` doesn't fire for a drawer already closed.
+    const slideRef = React.useRef<Animation | null>(null)
+    const slideIn = React.useCallback((view: React.ComponentRef<typeof View> | null) => {
+        const node = view as unknown as HTMLElement | null
+        if (slideRef.current) {
+            slideRef.current.onfinish = null
+            slideRef.current.cancel()
+            slideRef.current = null
+        }
+        if (!node) return
+        if (typeof node.animate !== "function") {
+            onShowRef.current?.()
+            return
+        }
+        const animation = node.animate([
+            { transform: `translateX(${width}px)` },
+            { transform: "translateX(0px)" },
+        ], { duration: SLIDE_MS, easing: "ease-in-out" })
+        animation.onfinish = () => {
+            slideRef.current = null
+            onShowRef.current?.()
+        }
+        slideRef.current = animation
+    }, [width])
 
     if (!open) return null
 
@@ -84,7 +127,8 @@ export function TVDrawer({
                 trapFocusDown={true}
                 style={{ height: "100%" }}
             >
-                <Animated.View
+                <DrawerPanel
+                    ref={WEB_SLIDE && !inline ? slideIn : undefined}
                     style={[
                         {
                             width,
@@ -92,7 +136,7 @@ export function TVDrawer({
                             backgroundColor: "#0c0c0c",
                             borderLeftWidth: tvSize(2),
                             borderLeftColor: "rgba(255,255,255,0.08)",
-                            transform: inline ? undefined : [{ translateX: slideAnim }],
+                            transform: inline || WEB_SLIDE ? undefined : [{ translateX: slideAnim }],
                             paddingTop: tvSize(40),
                             paddingHorizontal: 0,
                             gap: tvSize(20),
@@ -125,7 +169,7 @@ export function TVDrawer({
                     <View style={{ flex: 1 }}>
                         {children}
                     </View>
-                </Animated.View>
+                </DrawerPanel>
             </TVFocusGuideView>
         </View>
     )
