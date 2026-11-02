@@ -8,6 +8,7 @@ import { degradeServerReachability, markServerReachable } from "@/lib/connection
 import { manualOfflineModeAtom } from "@/lib/offline/manual-offline-mode"
 import { logger } from "@/lib/utils/logger"
 import { isWebSocketRelayUsable, LunaWebSocket, type ServerSocket } from "@/lib/webos/luna-websocket"
+import { isTizenDevice } from "@/lib/webos/tizen-platform"
 import { atom } from "jotai"
 import { useAtom, useAtomValue } from "jotai/react"
 import React from "react"
@@ -23,16 +24,24 @@ export const websocketLastCloseAtom = atom<{ code: number; reason: string } | nu
 /** Who opened the current connection: the app's webOS service ("relay") or the page itself. */
 export const websocketTransportAtom = atom<"relay" | "browser" | null>(null)
 
+/** Set when the page's own handshake failed before opening, cleared when one opens. */
+let browserHandshakeFailed = false
+
 /**
  * A Seanime server without a password refuses WebSocket handshakes from browser origins it
  * doesn't trust (403, "requires either a server password or a trusted local origin"). The webOS
- * app runs from file://, so its own handshake always carries `Origin: null` and is always refused,
- * while its HTTP requests carry no Origin and go through. The app's webOS service opens the socket
- * from Node without an Origin instead; without that service, only a server password gets it in.
+ * app runs from file://, so its own handshake always carries `Origin: null` and is always refused;
+ * the app's webOS service opens the socket from Node without an Origin instead, and without that
+ * service only a server password gets it in. What a Samsung (Tizen) TV sends depends on the model
+ * (`file://`, `null` or nothing), so there the app tries without a password and only a handshake
+ * that failed says the server refuses it.
  */
 export function isWebsocketRefusedForOrigin(status: Status | null | undefined): boolean {
     if (Platform.OS !== "web" || !status || status.serverHasPassword) return false
     if (isWebSocketRelayUsable()) return false
+    if (isTizenDevice()) {
+        return browserHandshakeFailed && (globalThis as { location?: { protocol?: string } }).location?.protocol === "file:"
+    }
     return (globalThis as { origin?: unknown }).origin === "null"
 }
 
@@ -136,6 +145,7 @@ export function WebsocketProvider({ children }: { children: React.ReactNode }) {
             nextSocket.addEventListener("open", () => {
                 if (cancelled || socket !== nextSocket) return
                 openedAt = Date.now()
+                if (via === "browser") browserHandshakeFailed = false
                 log.info(`WebSocket #${socketId} opened`, { afterMs: openedAt - startedAt })
                 retryCount = 0
                 setWsSender(message => {
@@ -193,11 +203,12 @@ export function WebsocketProvider({ children }: { children: React.ReactNode }) {
                     return
                 }
                 log.warning(`WebSocket #${socketId} closed`, { ...closeInfo, via })
+                if (via === "browser" && openedAt === null) browserHandshakeFailed = true
                 if (via === "relay" && !isWebSocketRelayUsable()) {
                     log.warning("The app's webOS service is missing; using the page's own WebSocket from now on")
                 }
                 else if (openedAt === null && via === "browser" && isWebsocketRefusedForOrigin(serverStatusRef.current)) {
-                    log.warning("The server refuses this app's WebSocket: it has no password and the page's origin is null")
+                    log.warning("The server refuses this app's WebSocket: it has no password and doesn't trust the page's origin")
                 }
                 setLastClose({ code: event.code, reason: event.reason })
 
