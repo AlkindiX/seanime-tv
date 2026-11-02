@@ -1,4 +1,4 @@
-import { getClientHeaders, saveClientIdentityFromHeaders } from "@/api/client/client-identity"
+import { saveClientIdentityFromHeaders } from "@/api/client/client-identity"
 import { createRequestControl, DEFAULT_REQUEST_TIMEOUT_MS } from "@/api/client/request-control"
 import { getServerAuthHeaders } from "@/api/client/server-auth"
 import { getServerBaseUrl } from "@/api/client/server-url"
@@ -124,8 +124,8 @@ export async function buildSeaQuery<T, D = unknown>(
         method,
         headers: {
             "Content-Type": "application/json",
+            // Includes the client identity headers.
             ...getServerAuthHeaders(resolvedAuthToken),
-            ...getClientHeaders(),
         },
     }
 
