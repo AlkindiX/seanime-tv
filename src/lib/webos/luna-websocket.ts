@@ -138,7 +138,10 @@ export class LunaWebSocket implements ServerSocket {
                 break
             case "message":
                 // A browser delivers no messages once close() was called.
-                if (this.readyState === OPEN) this.emit("message", { type: "message", data: response.data })
+                // JSON comes already parsed (see messageEvent in the relay); older relays send text.
+                if (this.readyState === OPEN) {
+                    this.emit("message", { type: "message", data: response.json !== undefined ? response.json : response.data })
+                }
                 break
             case "error":
                 this.emit("error", { type: "error", message: response.message })

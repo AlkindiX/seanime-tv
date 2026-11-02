@@ -70,6 +70,25 @@ function textFrame(data: unknown, isBinary?: boolean): string | null {
     return null
 }
 
+/**
+ * A text frame as the relay hands it to the app. Seanime's JSON arrives
+ * already parsed (`json`): the app's Luna bridge parses the whole callback
+ * anyway, and a string inside it had to be parsed a second time on the TV's
+ * busy page thread. Anything else stays text (`data`), as a browser gives it.
+ */
+export function messageEvent(text: string): Record<string, unknown> {
+    if (text.charAt(0) === "{") {
+        try {
+            const json: unknown = JSON.parse(text)
+            if (json && typeof json === "object") return { event: "message", json }
+        }
+        catch {
+            // Not JSON after all; pass it on as text.
+        }
+    }
+    return { event: "message", data: text }
+}
+
 export function createRelay(Socket: RelaySocketClass, { log = () => {} }: { log?: (line: string) => void } = {}) {
     const sockets = new Map<string, Entry>()
     let count = 0
@@ -128,7 +147,7 @@ export function createRelay(Socket: RelaySocketClass, { log = () => {} }: { log?
         socket.on("message", (data, isBinary) => {
             const text = textFrame(data, isBinary)
             // Seanime only sends JSON text; a browser would hand a binary frame over as a Blob the app ignores.
-            if (text !== null) emit(entry, { event: "message", data: text })
+            if (text !== null) emit(entry, messageEvent(text))
         })
         socket.on("error", (error) => {
             log(`socket ${entry.id}: ${errorText(error)}`)

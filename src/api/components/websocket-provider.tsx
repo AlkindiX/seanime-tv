@@ -45,18 +45,23 @@ function openServerSocket(url: string): { socket: ServerSocket; via: "relay" | "
     return { socket: new WebSocket(url), via: "browser" }
 }
 
+/** A browser socket gives text; the webOS relay hands JSON over already parsed. */
 function parseMessage(data: unknown): WebsocketMessage | null {
-    if (typeof data !== "string") return null
+    let message: unknown = data
+    if (typeof data === "string") {
+        try {
+            message = JSON.parse(data)
+        }
+        catch (error) {
+            log.warning("Failed to parse WebSocket message", error)
+            return null
+        }
+    }
+    if (!message || typeof message !== "object") return null
 
-    try {
-        const message = JSON.parse(data) as { type?: unknown; payload?: unknown }
-        if (typeof message.type !== "string") return null
-        return { type: message.type, payload: message.payload }
-    }
-    catch (error) {
-        log.warning("Failed to parse WebSocket message", error)
-        return null
-    }
+    const { type, payload } = message as { type?: unknown; payload?: unknown }
+    if (typeof type !== "string") return null
+    return { type, payload }
 }
 
 export function WebsocketProvider({ children }: { children: React.ReactNode }) {
