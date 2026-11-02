@@ -105,8 +105,12 @@ function guidesAround(el: Element, until: Element) {
     return found
 }
 
+/** Stops at the first match: checking one costs a style read and an ancestor walk. */
 function firstFocusableIn(scope: Element, root: Element) {
-    return focusablesIn(scope, root)[0] ?? null
+    for (const el of Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))) {
+        if (isFocusable(el, root)) return el
+    }
+    return null
 }
 
 function resolveDestination(destinations: readonly unknown[] | undefined, root: Element) {

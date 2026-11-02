@@ -21,9 +21,20 @@ import type {
     TechnicalInfo,
 } from "../MpvPlayer.types"
 import { audioFallbackIndex, audioTrackTitle, type BrowserAudioTrackInfo, matchAudioTracks } from "./audio-tracks"
-import { LibassRenderer, type AssChunk } from "./libass"
+import { LibassRenderer, preloadLibass, type AssChunk } from "./libass"
 import { levelsAboveHeight, loadFailure, mediaOptionType, shouldReload, type SourceProbe } from "./media-pipeline"
-import { activeCues, assDialogueCue, type AssTopStyles, isAssScript, parseAssStyles, parseSubtitles, stripMarkup, type SubtitleCue } from "./subtitles"
+import {
+    activeCues,
+    assDialogueCue,
+    type AssTopStyles,
+    cueKey,
+    isAssScript,
+    parseAssStyles,
+    parseSubtitles,
+    streamedLineKey,
+    stripMarkup,
+    type SubtitleCue,
+} from "./subtitles"
 
 export type WebVideoPlayerCallbacks = {
     onLoad: (payload: { url: string }) => void
@@ -59,7 +70,12 @@ type SubtitleEntry = {
 }
 
 type BrowserAudioTrack = { enabled: boolean; label: string; language: string }
-type BrowserAudioTrackList = { length: number; [index: number]: BrowserAudioTrack; addEventListener?: (type: string, listener: () => void) => void }
+type BrowserAudioTrackList = {
+    length: number
+    [index: number]: BrowserAudioTrack
+    addEventListener?: (type: string, listener: () => void) => void
+    removeEventListener?: (type: string, listener: () => void) => void
+}
 
 const MEDIA_ERRORS: Record<number, string> = {
     1: "Playback was aborted",
@@ -106,7 +122,25 @@ const LOAD_TIMEOUT_MS = 45000
 /** How often `source.onMediaEvent` hears where playback is. */
 const STATUS_INTERVAL_MS = 5000
 
+/**
+ * How often the app hears the position while playing. `timeupdate` comes
+ * about four times a second and each report re-renders the player screen,
+ * which the TV's CPU feels during playback; Android's mpv reports once a
+ * second too. Seeks, pauses and new durations are reported at once.
+ */
+const PROGRESS_INTERVAL_MS = 1000
+
 const ASS_CODECS = new Set(["S_TEXT/ASS", "S_TEXT/SSA"])
+
+/** How often the shown text lines are checked while playing; `timeupdate` only comes about four times a second. */
+const CUE_INTERVAL_MS = 100
+
+/** Whether a source probably carries ASS subtitles, so libass's files are worth reading while it loads. */
+function mayNeedLibass(source: MpvVideoSource) {
+    if (source.streamedSubtitles?.tracks.some(track => ASS_CODECS.has(track.codec ?? ""))) return true
+    if (source.subtitleFonts?.length) return true
+    return (source.externalSubtitles ?? []).some(sub => /\.(ass|ssa)($|[?#])/i.test(sub.url))
+}
 
 /**
  * A streamed ASS line as the packet Matroska stores, which libass reads: the
@@ -203,6 +237,14 @@ export class WebVideoPlayer {
     private libassEntry: SubtitleEntry | null = null
     private libassChunkCount = 0
     private libassQueue: Promise<void> = Promise.resolve()
+    /**
+     * libass is wanted but waits for the first frame: starting its worker and
+     * compiling its wasm while the TV's decoder starts delays the picture.
+     * Text lines show in the meantime.
+     */
+    private libassDeferred = false
+    /** The video showed its first frame this load (it plays, or sits paused and ready). */
+    private firstFrame = false
     /** libass failed to start or run on this TV; text lines are used from then on. */
     private static libassBroken = false
     private selectedSubtitle = 0
@@ -227,7 +269,9 @@ export class WebVideoPlayer {
     /** The audio tracks were checked for one the TV plays no sound for, this load. */
     private audioChecked = false
     private lastStatusAt = 0
+    private lastProgressAt = 0
     private readonly onVisibilityChange = () => this.handleVisibilityChange()
+    private readonly onTrackAdded = () => this.callbacks.onTracksReady()
 
     constructor(
         private readonly video: HTMLVideoElement,
@@ -251,6 +295,8 @@ export class WebVideoPlayer {
                 this.applyRestoredTracks()
                 this.callbacks.onTracksReady()
             }
+            // Ready and staying paused (no autoplay): nothing more to wait for.
+            if (video.paused) this.markFirstFrame()
         })
         on("play", () => {
             this.state({ isPaused: false })
@@ -258,10 +304,14 @@ export class WebVideoPlayer {
         })
         on("playing", () => {
             this.state({ isPlaying: true, isPaused: false, isLoading: false })
-            this.startCueTimer()
+            this.markFirstFrame()
+            this.syncCueTimer()
         })
         on("pause", () => {
             this.state({ isPlaying: false, isPaused: true })
+            this.emitProgress(true)
+            // Paused with a picture (or autoplay refused): the decoder isn't starting any more.
+            if (video.readyState >= 2) this.markFirstFrame()
             this.stopCueTimer()
             this.mediaEvent("pause")
         })
@@ -269,6 +319,7 @@ export class WebVideoPlayer {
         on("seeking", () => this.state({ isLoading: true }))
         on("seeked", () => {
             if (video.readyState >= 3 || video.paused) this.state({ isLoading: false })
+            this.emitProgress(true)
             this.updateCues()
             this.mediaEvent("seeked")
         })
@@ -282,7 +333,7 @@ export class WebVideoPlayer {
             this.updateCues()
             if (Date.now() - this.lastStatusAt >= STATUS_INTERVAL_MS) this.mediaEvent("status")
         })
-        on("durationchange", () => this.emitProgress())
+        on("durationchange", () => this.emitProgress(true))
         on("error", () => {
             const error = video.error
             const source = this.source
@@ -298,9 +349,8 @@ export class WebVideoPlayer {
             this.callbacks.onError({ error: message, code: error.code })
         })
 
-        video.textTracks.addEventListener?.("addtrack", () => this.callbacks.onTracksReady())
-        const audioTracks = this.audioTrackList()
-        audioTracks?.addEventListener?.("addtrack", () => this.callbacks.onTracksReady())
+        video.textTracks.addEventListener?.("addtrack", this.onTrackAdded)
+        this.audioTrackList()?.addEventListener?.("addtrack", this.onTrackAdded)
 
         if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.onVisibilityChange)
     }
@@ -318,6 +368,8 @@ export class WebVideoPlayer {
             lang: sub.lang,
         }))
         this.assRendering = source.assRendering !== false
+        // Read now, while the video loads, rather than when a track gets picked as the decoder starts.
+        if (this.assRendering && !WebVideoPlayer.libassBroken && this.subtitleHost && mayNeedLibass(source)) preloadLibass()
         this.subscribeStreamedSubtitles(source)
 
         const { video } = this
@@ -424,6 +476,8 @@ export class WebVideoPlayer {
     destroy() {
         this.reset()
         for (const [type, listener] of this.listeners) this.video.removeEventListener(type, listener)
+        this.video.textTracks.removeEventListener?.("addtrack", this.onTrackAdded)
+        this.audioTrackList()?.removeEventListener?.("addtrack", this.onTrackAdded)
         if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this.onVisibilityChange)
     }
 
@@ -440,6 +494,7 @@ export class WebVideoPlayer {
         this.subtitles = []
         this.selectedSubtitle = 0
         this.readyToSeek = false
+        this.firstFrame = false
         this.lastCueKey = ""
         this.suspended = null
         this.restoreTracks = null
@@ -476,7 +531,7 @@ export class WebVideoPlayer {
         this.mediaEvent("loadedmetadata")
         // The rate carries over loads (defaultPlaybackRate) with no ratechange to say so.
         this.state({ speed: this.video.playbackRate })
-        this.emitProgress()
+        this.emitProgress(true)
         this.leaveSilentAudioTrack()
         this.callbacks.onTracksReady()
 
@@ -649,7 +704,10 @@ export class WebVideoPlayer {
         return 0
     }
 
-    private emitProgress() {
+    private emitProgress(now = false) {
+        const time = Date.now()
+        if (!now && time - this.lastProgressAt < PROGRESS_INTERVAL_MS) return
+        this.lastProgressAt = time
         this.callbacks.onProgress({
             position: this.video.currentTime,
             duration: this.duration(),
@@ -907,6 +965,12 @@ export class WebVideoPlayer {
 
     private startLibass() {
         if (this.libassStarting || !this.subtitleHost) return
+        if (!this.firstFrame) {
+            this.libassDeferred = true
+            preloadLibass()
+            return
+        }
+        this.libassDeferred = false
         const loadId = this.loadId
         this.libassStarting = LibassRenderer.create(this.video, this.subtitleHost, this.source?.subtitleFonts ?? []).then((renderer) => {
             if (loadId !== this.loadId || !this.source) {
@@ -944,10 +1008,20 @@ export class WebVideoPlayer {
         this.updateCues(true)
     }
 
+    private markFirstFrame() {
+        if (this.firstFrame) return
+        this.firstFrame = true
+        if (this.libassDeferred) {
+            this.libassDeferred = false
+            this.syncLibass()
+        }
+    }
+
     private destroyLibass() {
         this.libass?.destroy()
         this.libass = null
         this.libassStarting = null
+        this.libassDeferred = false
         this.libassEntry = null
         this.libassChunkCount = 0
         this.libassQueue = Promise.resolve()
@@ -976,15 +1050,27 @@ export class WebVideoPlayer {
 
     private updateCues(force = false) {
         const cues = this.currentCues()
-        const key = cues.map(cue => `${cue.start}:${cue.text}`).join("|")
+        const key = cues.map(cueKey).join("|")
+        // Forced after a change of track, visibility or renderer, which may start or stop the timer.
+        if (force) this.syncCueTimer()
         if (!force && key === this.lastCueKey) return
         this.lastCueKey = key
         this.callbacks.onSubtitleCues(cues)
     }
 
-    private startCueTimer() {
-        // timeupdate only fires about four times a second.
-        this.cueTimer ??= setInterval(() => this.updateCues(), 100)
+    /** Whether a track drawn as text lines (not by libass) is showing, which the cue timer is for. */
+    private showsTextCues() {
+        const entry = this.subtitles[this.selectedSubtitle - 1]
+        return !!entry && this.subtitlesVisible && !this.libassDraws(entry)
+    }
+
+    /** Runs the cue timer only while playing a track drawn as text lines. */
+    private syncCueTimer() {
+        if (!this.video.paused && this.showsTextCues()) {
+            this.cueTimer ??= setInterval(() => this.updateCues(), CUE_INTERVAL_MS)
+        } else {
+            this.stopCueTimer()
+        }
     }
 
     private stopCueTimer() {
@@ -1022,11 +1108,7 @@ export class WebVideoPlayer {
             const entry = this.subtitles[index]
             const streamed = entry?.streamed
             if (!streamed || !entry.cues) continue
-            // An image's data is long; its start and tail tell images apart. Signs
-            // repeat the same text on several layers, so ASS fields count too.
-            const key = line.image
-                ? `${line.start}|image|${line.image.src.length}|${line.image.src.slice(-32)}`
-                : `${line.start}|${line.end}|${line.style ?? ""}|${line.ass ? Object.values(line.ass).join(",") : ""}|${line.text}`
+            const key = streamedLineKey(line)
             if (streamed.seen.has(key)) continue
             streamed.seen.add(key)
 
@@ -1041,7 +1123,9 @@ export class WebVideoPlayer {
         }
         if (selectedChanged) {
             this.syncLibass()
-            this.updateCues(true)
+            // Not forced: only a new line at the current time changes what shows,
+            // and the same lines again would still re-render the video view.
+            this.updateCues()
         }
     }
 

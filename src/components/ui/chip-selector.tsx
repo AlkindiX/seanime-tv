@@ -1,6 +1,6 @@
 import { Text } from "@/components/ui/text"
 import { cn } from "@/lib/utils"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import React from "react"
 import { Pressable, View } from "react-native"
 

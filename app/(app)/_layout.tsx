@@ -2,6 +2,7 @@ import { ServerDataWrapper } from "@/api/components/server-data-wrapper"
 import { useServerUrl } from "@/atoms/server.atoms"
 import { useDownloadQueueResumeService } from "@/lib/downloads/download-queue-resume-service"
 import { useDownloadSnapshotRefreshService, useOfflineSyncService, useServerLocalSyncService } from "@/lib/offline"
+import { TVEntryRouteTracker } from "@/components/tv/tv-focus"
 import { tvStackScreenLayout } from "@/components/tv/tv-screen-transition"
 import { usePlayerEventListener } from "@/lib/player"
 import { useWebOSLaunchParams } from "@/lib/webos/use-launch-params"
@@ -39,6 +40,7 @@ export default function AppLayout() {
         <ServerDataWrapper>
             {!Platform.isTV && <BackgroundServices />}
             <PlayerEventMount />
+            {Platform.isTV && <TVEntryRouteTracker />}
             {Platform.OS === "web" && <WebOSLaunchMount />}
             <Stack screenOptions={{ headerShown: false }} screenLayout={Platform.isTV ? tvStackScreenLayout : undefined}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

@@ -7,7 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import { isWebSocketRelayUsable, LunaWebSocket, RELAY_SERVICE_ID, resetWebSocketRelay, type ServerSocketEventMap } from "../src/lib/webos/luna-websocket.ts"
-import { createRelay, redactUrl, type LunaMessage, type RelaySocketClass } from "../webos/service/relay.ts"
+import { createRelay, messageEvent, redactUrl, type LunaMessage, type RelaySocketClass } from "../webos/service/relay.ts"
 import { buildService, serviceIdFor } from "../webos/service-build.mjs"
 
 const require = createRequire(import.meta.url)
@@ -407,4 +407,11 @@ test("the built service registers the relay under the ID the app calls, and work
         await server.close()
         fs.rmSync(dir, { recursive: true, force: true })
     }
+})
+
+test("the relay hands Seanime's JSON over parsed and anything else as text", () => {
+    assert.deepEqual(messageEvent("{\"type\":\"ping\",\"payload\":[1]}"), { event: "message", json: { type: "ping", payload: [1] } })
+    assert.deepEqual(messageEvent("hello"), { event: "message", data: "hello" })
+    assert.deepEqual(messageEvent("{not json"), { event: "message", data: "{not json" })
+    assert.deepEqual(messageEvent("42"), { event: "message", data: "42" })
 })

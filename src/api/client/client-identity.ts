@@ -77,15 +77,19 @@ function saveClientIdentity(clientId: string, clientIdProof: string = ""): Clien
     const normalizedClientId = normalizeValue(clientId)
     const normalizedProof = normalizeValue(clientIdProof)
 
+    const stored = readStoredClientIdentity()
     if (!normalizedClientId) {
-        return readStoredClientIdentity()
+        return stored
     }
 
-    setStoredString(CLIENT_ID_STORAGE_KEY, normalizedClientId)
+    // Responses may repeat the identity; storage writes are synchronous, so only changes are written.
+    if (stored.clientId !== normalizedClientId) {
+        setStoredString(CLIENT_ID_STORAGE_KEY, normalizedClientId)
+    }
 
     if (normalizedProof) {
-        setStoredString(CLIENT_ID_PROOF_STORAGE_KEY, normalizedProof)
-    } else {
+        if (stored.clientIdProof !== normalizedProof) setStoredString(CLIENT_ID_PROOF_STORAGE_KEY, normalizedProof)
+    } else if (stored.clientIdProof) {
         removeStoredKey(CLIENT_ID_PROOF_STORAGE_KEY)
     }
 

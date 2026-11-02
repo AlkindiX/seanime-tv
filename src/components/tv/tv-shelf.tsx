@@ -40,9 +40,15 @@ export const TVShelf = React.memo(function TVShelf({
     hideLibraryBadge,
     onMediaPress,
 }: TVShelfProps) {
-    const open = React.useCallback((id: number) => {
-        router.push(`/(app)/entry/anime/${id}`)
-    }, [])
+    // One handler for every card (it gets the card's media), so a re-render
+    // of the row doesn't hand each memoized card a new closure.
+    const open = React.useCallback((item: AL_BaseAnime) => {
+        if (onMediaPress) {
+            onMediaPress(item)
+            return
+        }
+        router.push(`/(app)/entry/anime/${item.id}`)
+    }, [onMediaPress])
 
     const renderItem = React.useCallback(({ item, index }: { item: AL_BaseAnime; index: number }) => {
         const meta = metaById?.get(item.id)
@@ -58,7 +64,7 @@ export const TVShelf = React.memo(function TVShelf({
                 showAudienceScore={showAudienceScore}
                 hideProgress={hideProgress}
                 hideLibraryBadge={hideLibraryBadge}
-                onPress={() => onMediaPress ? onMediaPress(item) : open(item.id)}
+                onPressMedia={open}
             />
         )
     }, [
@@ -67,7 +73,6 @@ export const TVShelf = React.memo(function TVShelf({
         hideLibraryBadge,
         hideProgress,
         metaById,
-        onMediaPress,
         open,
         showAudienceScore,
     ])

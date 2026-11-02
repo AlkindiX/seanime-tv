@@ -219,12 +219,24 @@ function lowerCss(file) {
     fs.writeFileSync(file, css)
 }
 
+/**
+ * Polyfills that replace a builtin every TV already has, only to add an edge
+ * case or a newer proposal the app never uses. Each turns a native fast path
+ * into JavaScript: `JSON.stringify` (for `JSON.rawJSON`, missing before
+ * Chromium 114) became a replacer called per value on every query cache
+ * write and WebSocket send, `push` a JS function, and the Error constructors
+ * wrappers. A redefined `RegExp.prototype.flags` also takes V8's regexps off
+ * their fast path.
+ */
+const SKIPPED_POLYFILLS = /^(es\.json\.|es\.array\.push$|es\.error\.cause$|es\.aggregate-error\.cause$|web\.dom-exception\.stack$|es\.regexp\.flags$)/
+
 async function buildPolyfills(file) {
-    const { list } = coreJsCompat({
+    const { list: all } = coreJsCompat({
         targets: { chrome: String(CHROME) },
         modules: ["core-js/stable"],
         version: require("core-js/package.json").version,
     })
+    const list = all.filter(name => !SKIPPED_POLYFILLS.test(name))
     log(`Bundling ${list.length} core-js polyfills for Chromium ${CHROME}…`)
     await esbuild.build({
         stdin: {

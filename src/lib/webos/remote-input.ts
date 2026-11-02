@@ -94,3 +94,27 @@ export function createWheelStepper({ step, interval }: WheelStepperOptions) {
         return direction
     }
 }
+
+/**
+ * Holds back held-key repeats while the last focus step hasn't reached the
+ * screen. A held arrow repeats every 30-50 ms; when a step (focus, the
+ * re-render it causes, the scroll) takes longer on the TV, repeats queued up
+ * and focus kept moving after the key was let go. `stepped` returns the
+ * function to call once a frame has drawn the step; past `maxWait` a repeat
+ * goes through anyway, so a page without frames can't swallow them.
+ */
+export function createRepeatGate(maxWait: number) {
+    let pendingSince: number | null = null
+
+    return {
+        blocked(now: number) {
+            return pendingSince !== null && now - pendingSince < maxWait
+        },
+        stepped(now: number) {
+            pendingSince = now
+            return () => {
+                if (pendingSince === now) pendingSince = null
+            }
+        },
+    }
+}

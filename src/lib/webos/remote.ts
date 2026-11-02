@@ -5,7 +5,7 @@
  * developing) into what react-native-tvos gives the app natively: D-pad
  * focus movement, `useTVEventHandler` events and `hardwareBackPress`.
  */
-import { createWheelStepper, isDigitEventType, remoteEventType } from "./remote-input"
+import { createRepeatGate, createWheelStepper, isDigitEventType, remoteEventType } from "./remote-input"
 import { animateScroll, stopScroll } from "./scroll-animator"
 import {
     type Direction,
@@ -170,6 +170,16 @@ function isBackKey(event: KeyboardEvent) {
     return event.key === "Backspace" && !isTextField(document.activeElement)
 }
 
+/** See createRepeatGate: a held arrow moves at most once per drawn frame. */
+const repeatGate = createRepeatGate(250)
+
+function stepFocus(direction: Direction, repeat: boolean) {
+    const now = performance.now()
+    if (repeat && repeatGate.blocked(now)) return
+    moveFocus(direction)
+    requestAnimationFrame(repeatGate.stepped(now))
+}
+
 function onKeyDown(event: KeyboardEvent) {
     if (isBackKey(event)) {
         event.preventDefault()
@@ -205,7 +215,7 @@ function onKeyDown(event: KeyboardEvent) {
     if (type === "up" || type === "down" || type === "left" || type === "right") {
         event.preventDefault()
         if (pointerMode) setPointerMode(false)
-        moveFocus(type as Direction)
+        stepFocus(type as Direction, event.repeat)
     } else if (type === "select" && !getFocusedElement()) {
         // Focus may still sit on a hidden screen's control; don't let it press.
         event.preventDefault()
@@ -514,7 +524,10 @@ function watchLostFocus() {
     document.addEventListener("focusin", () => {
         if (!pointerMode && focusIsLost()) checkFocusSoon()
     }, true)
+    // Catches focus left on something hidden without a focusout. Nothing to
+    // catch while the app is in the background or the pointer is in use.
     setInterval(() => {
+        if (document.hidden || pointerMode) return
         if (focusIsLost()) schedule()
     }, 600)
 }

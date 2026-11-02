@@ -12,6 +12,8 @@ const ROTATE_MS = 10000
 /** Backdrop cross-fade; the text eases in over the first part of it. */
 const FADE_MS = 900
 const TEXT_MS = 480
+/** How much of the hero must be on screen for it to keep rotating. */
+const HERO_IN_VIEW_RATIO = 0.3
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)"
 const BRAND = "#8176ef"
 
@@ -72,13 +74,16 @@ export const TVHeroCarousel = React.memo(function TVHeroCarousel({
     const [firstAction, setFirstAction] = React.useState<React.ElementRef<typeof Pressable> | null>(null)
     // Rotation waits while focus is on the hero's buttons, so they don't change under it.
     const [focusInside, setFocusInside] = React.useState(false)
+    // webOS: scrolled down to the rows, the hero stops rotating; each turn decodes
+    // a full-width backdrop and cross-fades the whole hero while nobody sees it.
+    const [inView, setInView] = React.useState(true)
     const containerRef = React.useRef<ViewNode>(null)
     const textRef = React.useRef<ViewNode>(null)
     const keys = items.map(item => item.key).join(":")
     const count = items.length
     const index = slideKey === null ? 0 : Math.max(items.findIndex(item => item.key === slideKey), 0)
     const nextKey = count > 1 ? items[(index + 1) % count].key : null
-    const rotating = active && count > 1 && !focusInside
+    const rotating = active && inView && count > 1 && !focusInside
 
     // Android TV and tvOS start over at the first slide whenever the items change, as before.
     React.useEffect(() => {
@@ -111,6 +116,18 @@ export const TVHeroCarousel = React.memo(function TVHeroCarousel({
             node.removeEventListener("focusin", onIn)
             node.removeEventListener("focusout", onOut)
         }
+    }, [count > 0])
+
+    React.useEffect(() => {
+        if (Platform.OS !== "web" || typeof IntersectionObserver === "undefined") return
+        const node = containerRef.current as unknown as HTMLElement | null
+        if (!node) return
+        const observer = new IntersectionObserver((entries) => {
+            const entry = entries[entries.length - 1]
+            if (entry) setInView(entry.isIntersecting && entry.intersectionRatio >= HERO_IN_VIEW_RATIO)
+        }, { threshold: [0, HERO_IN_VIEW_RATIO] })
+        observer.observe(node)
+        return () => observer.disconnect()
     }, [count > 0])
 
     const item = count > 0 ? items[index] : null

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { activeCues, assDialogueCue, isAssScript, parseAssStyles, parseSubtitles } from "../modules/expo-mpv-player/src/web/subtitles.ts"
+import { activeCues, assDialogueCue, cueKey, isAssScript, parseAssStyles, parseSubtitles, streamedLineKey } from "../modules/expo-mpv-player/src/web/subtitles.ts"
 
 test("srt cues keep their timing and lines", () => {
     const cues = parseSubtitles([
@@ -164,4 +164,16 @@ test("an ASS script is told apart from SRT and WebVTT, for libass", () => {
     assert.equal(isAssScript("\n[Events]\nFormat: Layer, Start, End, Style, Text\n"), true)
     assert.equal(isAssScript("1\n00:00:01,000 --> 00:00:02,000\nHello\n"), false)
     assert.equal(isAssScript("WEBVTT\n\n00:01.000 --> 00:02.000\nHello\n"), false)
+})
+
+test("streamed lines are told apart by their ASS fields and images by their data", () => {
+    const line = { trackNumber: 3, start: 1, end: 2, text: "Sign", style: "Default", ass: { layer: "0" } }
+    assert.equal(streamedLineKey(line), streamedLineKey({ ...line, ass: { layer: "0" } }))
+    assert.notEqual(streamedLineKey(line), streamedLineKey({ ...line, ass: { layer: "1" } }))
+
+    const image = { src: "data:image/png;base64,AAAA", x: 0, y: 0, width: 1, height: 1, canvasWidth: 0, canvasHeight: 0 }
+    const picture = { trackNumber: 4, start: 1, end: 2, text: "", image }
+    assert.notEqual(streamedLineKey(picture), streamedLineKey({ ...picture, image: { ...image, src: "data:image/png;base64,BBBB" } }))
+    assert.notEqual(cueKey({ start: 1, end: 2, text: "", image }), cueKey({ start: 1, end: 2, text: "", image: { ...image, src: "blob:x" } }))
+    assert.equal(cueKey({ start: 1, end: 2, text: "Hi" }), cueKey({ start: 1, end: 2, text: "Hi" }))
 })

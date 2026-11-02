@@ -229,6 +229,14 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
   eases in. Back still closes an open panel or dialog first, then the controls. The controls'
   exit button leaves the same way; the remote's Stop key leaves and also ends the stream. The
   position goes to the server's watch history before the player closes.
+- **Next episode stays in the player.** For an auto-selected or previous-batch torrent or
+  debrid stream, the next episode (the button, the countdown, CH+/CH−, or the episodes
+  panel) starts from the player: it stops the current video, shows its loading screen with
+  what the server is doing (searching, the chosen release, debrid status), and plays the
+  new stream when it is ready. The old stream ends as the new one starts. Back on that
+  screen cancels the start and returns to the show page. It goes to the show page instead
+  when the picker is needed (a hand-picked release, or a previous batch whose file for the
+  episode isn't known), for online streams, and after a failed start (with a toast).
 - **Torrent and debrid streams keep running** after you leave the player, in case Back was
   pressed by accident. The server goes on downloading the episode's file (it marks the whole
   file for download) and Tenji keeps the subtitle lines it sends meanwhile. Playing that

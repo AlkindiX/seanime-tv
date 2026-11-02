@@ -10,7 +10,7 @@ export interface TVEpisodeShelfProps {
     episodes: Anime_Episode[]
     onEpisodePress: (episode: Anime_Episode) => void
     first?: boolean
-    cardProps?: (episode: Anime_Episode, index: number) => Omit<Partial<React.ComponentProps<typeof TVEpisodeCard>>, "onPress">
+    cardProps?: (episode: Anime_Episode, index: number) => Omit<Partial<React.ComponentProps<typeof TVEpisodeCard>>, "onPress" | "onPressEpisode" | "episode">
 }
 
 export const TVEpisodeShelf = React.memo(function TVEpisodeShelf({
@@ -31,7 +31,8 @@ export const TVEpisodeShelf = React.memo(function TVEpisodeShelf({
                 preferred={first && index === 0}
                 recyclingKey={item.localFile?.path || `tv-episode-${item.episodeNumber}-${index}`}
                 {...extra}
-                onPress={() => onEpisodePress(item)}
+                episode={item}
+                onPressEpisode={onEpisodePress}
             />
         )
     }, [cardProps, first, onEpisodePress])

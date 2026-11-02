@@ -11,7 +11,7 @@ import { getEpisodeSpoilerState, getSpoilerSafeAnimeImage } from "@/lib/anime-sp
 import { useIsLocalServer } from "@/lib/downloads"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/utils/toast"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import React, { useCallback, useMemo, useState } from "react"
 import { Pressable, ScrollView, Text, View } from "react-native"
 

@@ -1,5 +1,5 @@
 import { useServerConnectionState } from "@/lib/offline"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import React from "react"
 import { Text, View } from "react-native"
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated"

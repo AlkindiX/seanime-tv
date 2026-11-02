@@ -38,6 +38,8 @@ export function TVMediaGrid({
     const columns = Math.max(4, Math.floor((width - (TV.gutter * 2)) / tvSize(190)))
     const cardWidth = Math.floor((width - (TV.gutter * 2) - ((columns - 1) * gap)) / columns)
 
+    // One handler for every card (it gets the card's media), so a re-render
+    // of the grid doesn't hand each memoized card a new closure.
     const open = React.useCallback((item: AL_BaseAnime) => {
         if (onMediaPress) {
             onMediaPress(item)
@@ -52,7 +54,7 @@ export function TVMediaGrid({
             width={cardWidth}
             preferred={index === 0}
             showAudienceScore={showAudienceScore}
-            onPress={() => open(item)}
+            onPressMedia={open}
         />
     ), [cardWidth, open, showAudienceScore])
 

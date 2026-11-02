@@ -58,6 +58,21 @@ function getPlayerLogData(source: MobilePlaybackSource | null) {
     }
 }
 
+/** Same length and the same fields in each item: a fresh list from the player that changed nothing. */
+function sameItems<T extends object>(a: readonly T[], b: readonly T[]) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+        const left = a[i] as Record<string, unknown>
+        const right = b[i] as Record<string, unknown>
+        const keys = Object.keys(left)
+        if (keys.length !== Object.keys(right).length) return false
+        for (const key of keys) {
+            if (left[key] !== right[key]) return false
+        }
+    }
+    return true
+}
+
 const INITIAL_STATE: PlayerState = {
     status: "idle",
     paused: true,
@@ -357,7 +372,16 @@ export function useMpvPlayer() {
                 next.audioDelay = payload.audioDelay
             }
 
-            return next
+            // Most events repeat what the state says already (the web player reports
+            // on every media event); the same object skips re-rendering the player.
+            const changed = next.paused !== s.paused
+                || next.status !== s.status
+                || next.eofReached !== s.eofReached
+                || next.isPiPActive !== s.isPiPActive
+                || next.speed !== s.speed
+                || next.subtitleDelay !== s.subtitleDelay
+                || next.audioDelay !== s.audioDelay
+            return changed ? next : s
         })
     }, [source])
 
@@ -438,13 +462,25 @@ export function useMpvPlayer() {
                     selected: showSubtitles ? t.selected : false,
                 }))
 
+                // This runs on every track event (several at startup on the web); lists
+                // that didn't change keep their identity, so what depends on them
+                // (track auto-selection, skip times from chapters) doesn't run again.
+                const subtitleTracks = sameItems(s.subtitleTracks, updatedSubs) ? s.subtitleTracks : updatedSubs
+                const audioTracks = sameItems(s.audioTracks, mappedAudio) ? s.audioTracks : mappedAudio
+                const chapters = sameItems(s.chapters, mappedChapters) ? s.chapters : mappedChapters
+                const activeAudioTrackId = mappedAudio.find(t => t.selected)?.id ?? null
+                if (subtitleTracks === s.subtitleTracks && audioTracks === s.audioTracks && chapters === s.chapters
+                    && activeSubId === s.activeSubtitleTrackId && activeAudioTrackId === s.activeAudioTrackId) {
+                    return s
+                }
+
                 return {
                     ...s,
-                    subtitleTracks: updatedSubs,
-                    audioTracks: mappedAudio,
-                    chapters: mappedChapters,
+                    subtitleTracks,
+                    audioTracks,
+                    chapters,
                     activeSubtitleTrackId: activeSubId,
-                    activeAudioTrackId: mappedAudio.find(t => t.selected)?.id ?? null,
+                    activeAudioTrackId,
                 }
             })
         }

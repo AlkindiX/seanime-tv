@@ -1,6 +1,6 @@
 import { TV, tvSize } from "@/components/tv/tv-scale"
 import * as React from "react"
-import { type StyleProp, View, type ViewStyle } from "react-native"
+import { Platform, type StyleProp, View, type ViewStyle } from "react-native"
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -25,7 +25,9 @@ function Block({ style }: { style: StyleProp<ViewStyle> }) {
     )
 }
 
-function Pulse({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+type PulseProps = { children: React.ReactNode; style?: StyleProp<ViewStyle> }
+
+function NativePulse({ children, style }: PulseProps) {
     const opacity = useSharedValue(0.5)
     const pulse = useAnimatedStyle(() => ({ opacity: opacity.value }))
 
@@ -41,6 +43,31 @@ function Pulse({ children, style }: { children: React.ReactNode; style?: StylePr
 
     return <Animated.View style={[style, pulse]}>{children}</Animated.View>
 }
+
+/**
+ * webOS: the pulse is a Web Animation on opacity, which the compositor runs.
+ * Reanimated's loop runs in JavaScript there and restyles every frame while
+ * a screen loads, the moment the TV's CPU is busiest.
+ */
+function WebPulse({ children, style }: PulseProps) {
+    const ref = React.useRef<React.ComponentRef<typeof View>>(null)
+
+    React.useEffect(() => {
+        const node = ref.current as unknown as HTMLElement | null
+        if (!node || typeof node.animate !== "function") return
+        const animation = node.animate([{ opacity: 0.5 }, { opacity: 0.9 }], {
+            duration: 850,
+            easing: "ease-in-out",
+            direction: "alternate",
+            iterations: Infinity,
+        })
+        return () => animation.cancel()
+    }, [])
+
+    return <View ref={ref} style={[{ opacity: 0.5 }, style]}>{children}</View>
+}
+
+const Pulse = Platform.OS === "web" ? WebPulse : NativePulse
 
 export const TVHeroSkeleton = React.memo(function TVHeroSkeleton({
     height = tvSize(560),

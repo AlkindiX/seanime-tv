@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { assDialogueCue, parseAssStyles } from "../modules/expo-mpv-player/src/web/subtitles.ts"
-import { describeStreamCodecs, eventsOf, toLines } from "../src/lib/player/direct-stream-format.ts"
+import { describeStreamCodecs, eventsOf, imageObjectUrl, newLines, toLines } from "../src/lib/player/direct-stream-format.ts"
 
 const event = {
     trackNumber: 4,
@@ -111,4 +111,31 @@ test("stream codecs name the audio an LG TV may not play", () => {
     assert.deepEqual(describeStreamCodecs(undefined), {
         video: undefined, resolution: undefined, audio: [], riskyAudio: [], videoProblems: [], audioTracks: [],
     })
+})
+
+test("lines the server sends again after a seek are kept once", () => {
+    const seen = new Set<string>()
+    const urls: string[] = []
+    const lines = toLines([event, { ...event, extraData: { style: "Default", layer: "1" } }])
+    assert.equal(newLines(lines, seen, urls).length, 2)
+    // The same batch again (a seek), plus one new line.
+    const again = toLines([event, { ...event, startTime: 9000 }])
+    assert.deepEqual(newLines(again, seen, urls).map(line => line.start), [9])
+    assert.deepEqual(urls, [])
+})
+
+test("PGS images become blob URLs, once each", () => {
+    const seen = new Set<string>()
+    const urls: string[] = []
+    const image = {
+        trackNumber: 5, text: "iVBORw0KGgo", startTime: 2000, duration: 1000, codecID: "S_HDMV/PGS",
+        extraData: { type: "image", width: "400", height: "80" },
+    }
+    const [line] = newLines(toLines([image]), seen, urls)
+    assert.match(line.image?.src ?? "", /^blob:/)
+    assert.deepEqual(urls, [line.image?.src])
+    assert.deepEqual(newLines(toLines([image]), seen, urls), [])
+    for (const url of urls) URL.revokeObjectURL(url)
+
+    assert.equal(imageObjectUrl("https://example.invalid/a.png"), null)
 })

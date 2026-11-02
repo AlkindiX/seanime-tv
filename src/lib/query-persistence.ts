@@ -3,7 +3,7 @@ import { getAllDownloadedAnime } from "@/lib/downloads/download-store"
 import { QueryClient } from "@tanstack/react-query"
 import { createMMKV } from "react-native-mmkv"
 import { getAllDownloadedManga } from "./downloads"
-import { shouldPersistQuery } from "./query-persistence-policy"
+import { type PersistedQueries, shouldPersistQuery } from "./query-persistence-policy"
 
 /**
  * - On each successful query, the response JSON is written to MMKV under a stable key
@@ -17,7 +17,8 @@ const cacheStorage = createMMKV({ id: "seanime-query-cache" })
 
 const CACHE_KEY_PREFIX = "qc:"
 const CACHE_VERSION_KEY = "qc:__version__"
-const CURRENT_CACHE_VERSION = 1
+/** 2: only queries something reads back are written (version 1 wrote them all). */
+const CURRENT_CACHE_VERSION = 2
 
 /**
  * Query keys that should be hydrated from cache on app startup.
@@ -35,6 +36,12 @@ export const OFFLINE_QUERY_KEYS: readonly (readonly string[])[] = [
     [API_ENDPOINTS.ANIME_ENTRIES.GetMissingEpisodes.key],
     [API_ENDPOINTS.CONTINUITY.GetContinuityWatchHistory.key],
 ]
+
+/** Startup restores OFFLINE_QUERY_KEYS; downloaded media's entry pages are restored by id. */
+const PERSISTED_QUERIES: PersistedQueries = {
+    keys: new Set(OFFLINE_QUERY_KEYS.map(serializeQueryKey)),
+    perIdEndpoints: new Set([API_ENDPOINTS.ANIME_ENTRIES.GetAnimeEntry.key, API_ENDPOINTS.MANGA.GetMangaEntry.key]),
+}
 
 /**
  * Persist a single query result to MMKV.
@@ -79,7 +86,11 @@ export function hydrateQueryClient(
 ): void {
     // version gate, if the cache was written by a different version, wipe it
     const storedVersion = cacheStorage.getNumber(CACHE_VERSION_KEY)
-    if (storedVersion !== CURRENT_CACHE_VERSION) {
+    if (storedVersion === 1) {
+        // Same format; drop what version 1 wrote that nothing reads back.
+        removeUnreadQueries()
+        cacheStorage.set(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION)
+    } else if (storedVersion !== CURRENT_CACHE_VERSION) {
         clearQueryCache()
         cacheStorage.set(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION)
         return
@@ -135,16 +146,40 @@ export function clearQueryCache(): void {
     }
 }
 
+function removeUnreadQueries(): void {
+    for (const key of cacheStorage.getAllKeys()) {
+        if (!key.startsWith(CACHE_KEY_PREFIX) || key === CACHE_VERSION_KEY) continue
+        let queryKey: unknown
+        try {
+            queryKey = JSON.parse(key.slice(CACHE_KEY_PREFIX.length))
+        }
+        catch {
+            queryKey = null
+        }
+        if (!Array.isArray(queryKey) || !shouldPersistQuery({}, queryKey, PERSISTED_QUERIES)) {
+            cacheStorage.remove(key)
+        }
+    }
+}
+
 export function setupQueryPersistence(queryClient: QueryClient): void {
     const cache = queryClient.getQueryCache()
+    // The data each query last wrote. A refetch returning the same data keeps
+    // the same object (structural sharing), so there is nothing to write.
+    const written = new WeakMap<object, unknown>()
+    for (const query of cache.getAll()) {
+        if (query.state.data !== undefined) written.set(query, query.state.data)
+    }
 
     cache.subscribe((event) => {
         if (
             event.type === "updated" &&
             event.action.type === "success" &&
             event.query.state.data !== undefined &&
-            shouldPersistQuery(event.query.options)
+            written.get(event.query) !== event.query.state.data &&
+            shouldPersistQuery(event.query.options, event.query.queryKey, PERSISTED_QUERIES)
         ) {
+            written.set(event.query, event.query.state.data)
             persistQueryData(event.query.queryKey, event.query.state.data)
         }
     })

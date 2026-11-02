@@ -13,7 +13,7 @@ import {
     useDeleteMangaChapterDownload,
 } from "@/lib/downloads"
 import { getMangaDownloadDiskUsage } from "@/lib/downloads/manga-download-manager"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { useRouter } from "expo-router"
 import * as React from "react"
 import { Alert, Pressable, Text, View } from "react-native"

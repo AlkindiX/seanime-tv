@@ -1,6 +1,7 @@
 import { subscribeWsMessage, type WebsocketMessage } from "@/api/components/websocket-hub"
 import { API_ENDPOINTS } from "@/api/generated/endpoints"
 import { requestServerLocalSync } from "@/lib/offline"
+import { createKeyBatcher } from "@/lib/utils/key-batcher"
 import { logger } from "@/lib/utils/logger"
 import { toast } from "@/lib/utils/toast"
 import { useQueryClient } from "@tanstack/react-query"
@@ -49,6 +50,8 @@ type ActiveTorrentCountPayload = {
 }
 
 const DOWNLOAD_COMPLETION_FOLLOW_UP_MS = 5_000
+/** Library watcher events come in bursts (a scan, a folder being copied); they refresh once per this. */
+const LIBRARY_REFRESH_BATCH_MS = 1_000
 
 const animeCollectionRefreshKeys = [
     API_ENDPOINTS.ANIME_COLLECTION.GetLibraryCollection.key,
@@ -199,6 +202,12 @@ export function useWebsocketEventRouter() {
             }, DOWNLOAD_COMPLETION_FOLLOW_UP_MS)
         }
 
+        const libraryRefresh = createKeyBatcher((keys) => {
+            // An update already on its way is left to finish rather than started over.
+            void Promise.all(keys.map(queryKey => queryClient.invalidateQueries({ queryKey: [queryKey] }, { cancelRefetch: false })))
+            requestServerLocalSync()
+        }, LIBRARY_REFRESH_BATCH_MS)
+
         const handleMessage = async (message: WebsocketMessage) => {
             switch (message.type) {
                 case WEBSOCKET_EVENTS.ErrorToast:
@@ -250,8 +259,7 @@ export function useWebsocketEventRouter() {
                 case WEBSOCKET_EVENTS.AutoScanCompleted:
                 case WEBSOCKET_EVENTS.LibraryWatcherFileAdded:
                 case WEBSOCKET_EVENTS.LibraryWatcherFileRemoved:
-                    await invalidateQueryKeys(queryClient, libraryRefreshKeys)
-                    requestServerLocalSync()
+                    libraryRefresh.add(libraryRefreshKeys)
                     return
                 case WEBSOCKET_EVENTS.AutoDownloaderItemAdded:
                     await invalidateQueryKeys(queryClient, autoDownloaderRefreshKeys)
@@ -308,6 +316,7 @@ export function useWebsocketEventRouter() {
 
         return () => {
             unsubscribe()
+            libraryRefresh.dispose()
             if (downloadCompletionTimerRef.current) {
                 clearTimeout(downloadCompletionTimerRef.current)
                 downloadCompletionTimerRef.current = null

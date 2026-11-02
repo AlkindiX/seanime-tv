@@ -26,7 +26,7 @@ import {
     pickTrendingHeroItems,
     trendingShelfIndex,
 } from "@/components/tv/tv-home-feed"
-import { TVNavScrim } from "@/components/tv/tv-nav-scrim"
+import { SCRIM_SCROLL_THRESHOLD, TVNavScrim, useScrolledPast } from "@/components/tv/tv-nav-scrim"
 import type { TVMediaMeta } from "@/components/tv/tv-shelf"
 import { ContinueWatchingItem, useAnimeLibraryCollection } from "@/hooks/use-anime-library-collection"
 import { getContinueWatchingSpoilerActive, getEpisodeSpoilerState, getSpoilerSafeAnimeImage } from "@/lib/anime-spoilers"
@@ -53,6 +53,27 @@ type Shelf = {
 }
 
 const NO_TRENDING: HomeTrendingItem<AL_BaseAnime>[] = []
+
+/**
+ * webOS: the search box and the nav scrim fade with CSS transitions when the
+ * screen scrolls past the top (useScrolledPast), not with Reanimated styles
+ * that follow every scroll frame from JavaScript there. Plain views then.
+ */
+const CSS_SCROLL_FADE = Platform.OS === "web"
+const SearchBox = (CSS_SCROLL_FADE ? View : Animated.View) as typeof Animated.View
+const LibraryScrollView = (CSS_SCROLL_FADE ? ScrollView : Animated.ScrollView) as typeof Animated.ScrollView
+const SEARCH_FADE = {
+    transitionProperty: "opacity, transform",
+    transitionDuration: "240ms",
+    transitionTimingFunction: "ease-out",
+}
+const SEARCH_SHOWN = { ...SEARCH_FADE, opacity: 1, transform: [{ translateY: 0 }] } as object
+const SEARCH_HIDDEN = { ...SEARCH_FADE, opacity: 0, transform: [{ translateY: -tvSize(20) }] } as object
+
+/** Outside the component: the React Compiler skips a component containing `import()`. */
+function warmEntryScreen() {
+    void import("@/components/features/media/anime-entry-screen")
+}
 
 const LABELS: Record<string, string> = {
     CURRENT: "Currently watching",
@@ -83,6 +104,7 @@ export function TVLibraryScreen() {
         const translateY = interpolate(scrollY.value, [0, 80], [0, -searchSlideDistance], Extrapolation.CLAMP)
         return { opacity, transform: [{ translateY }] }
     })
+    const [scrolled, onWebScroll] = useScrolledPast(SCRIM_SCROLL_THRESHOLD)
     const {
         libraryCollectionList,
         continueWatchingList,
@@ -122,14 +144,11 @@ export function TVLibraryScreen() {
     // Load it while the library sits idle instead.
     React.useEffect(() => {
         if (Platform.OS !== "web" || isLoading) return
-        const warm = () => {
-            void import("@/components/features/media/anime-entry-screen")
-        }
         if (typeof requestIdleCallback === "function") {
-            const handle = requestIdleCallback(warm, { timeout: 5000 })
+            const handle = requestIdleCallback(warmEntryScreen, { timeout: 5000 })
             return () => cancelIdleCallback(handle)
         }
-        const timer = setTimeout(warm, 2000)
+        const timer = setTimeout(warmEntryScreen, 2000)
         return () => clearTimeout(timer)
     }, [isLoading])
 
@@ -279,7 +298,7 @@ export function TVLibraryScreen() {
             progressPercent={item.episode.baseAnime?.id
                 ? getEpisodePercentageComplete(watchHistory, item.episode.baseAnime.id, item.episode.progressNumber)
                 : 0}
-            onPress={() => openContinue(item)}
+            onPressItem={openContinue}
         />
     ), [openContinue, watchHistory])
 
@@ -328,7 +347,7 @@ export function TVLibraryScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
             {isConnected ? (
-                <Animated.View
+                <SearchBox
                     pointerEvents="box-none"
                     style={[{
                         position: "absolute",
@@ -336,7 +355,7 @@ export function TVLibraryScreen() {
                         left: TV.gutter,
                         width: tvSize(480),
                         zIndex: 210,
-                    }, searchAnimatedStyle]}
+                    }, CSS_SCROLL_FADE ? (scrolled ? SEARCH_HIDDEN : SEARCH_SHOWN) : searchAnimatedStyle]}
                 >
                     <TVInput
                         value={search}
@@ -357,18 +376,18 @@ export function TVLibraryScreen() {
                             />
                         )}
                     />
-                </Animated.View>
+                </SearchBox>
             ) : null}
 
             {searching ? (
                 <TVMediaGrid
                     media={searchMedia}
-                    query={search}
+                    query={deferredSearch}
                     topInset={TV.navInset}
                     emptyText="Try another title from your AniList library."
                 />
             ) : (
-                <Animated.ScrollView
+                <LibraryScrollView
                     style={{ flex: 1 }}
                     fadingEdgeLength={{ start: TV.navInset + tvSize(18), end: 0 }}
                     contentContainerStyle={{
@@ -376,7 +395,7 @@ export function TVLibraryScreen() {
                         gap: TV.sectionGap,
                     }}
                     showsVerticalScrollIndicator={false}
-                    onScroll={scrollHandler}
+                    onScroll={CSS_SCROLL_FADE ? onWebScroll : scrollHandler}
                     scrollEventThrottle={16}
                 >
                     <View style={{ gap: tvSize(34), paddingBottom: tvSize(8) }}>
@@ -437,9 +456,9 @@ export function TVLibraryScreen() {
                             first={heroItems.length === 0 && index === 0}
                         />
                     ))}
-                </Animated.ScrollView>
+                </LibraryScrollView>
             )}
-            {!searching ? <TVNavScrim scrollY={scrollY} /> : null}
+            {!searching ? <TVNavScrim shown={scrolled} /> : null}
         </View>
     )
 }

@@ -6,7 +6,7 @@ import { LuffyError } from "@/components/shared/luffy-error"
 import { Button } from "@/components/ui/button"
 import { formatTime } from "@/components/features/player/helpers"
 import { endKeptStream, useKeptStream } from "@/lib/player/kept-direct-stream"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import {
     debridStreamStateAtom,
     directStreamLoadingMessageAtom,

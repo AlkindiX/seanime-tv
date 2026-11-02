@@ -4,6 +4,7 @@
  */
 import type { MKVParser_Metadata, MKVParser_SubtitleEvent, MKVParser_TrackInfo, NativePlayer_SubtitleEventsPayload } from "@/api/generated/types"
 import type { MpvStreamedSubtitleLine, MpvSubtitleImage } from "expo-mpv-player"
+import { streamedLineKey } from "../../../modules/expo-mpv-player/src/web/subtitles.ts"
 import { h264ProfileProblem } from "../webos/playback-capabilities.ts"
 import { describeTVAudioTrack, mkvAudioCodec, type TVAudioTrack } from "../webos/tv-audio.ts"
 
@@ -40,6 +41,47 @@ export function toLines(events: MKVParser_SubtitleEvent[]): MpvStreamedSubtitleL
         })
     }
     return lines
+}
+
+/**
+ * The lines of `received` not seen before (by the web player's key): the
+ * server sends them all again from the new position after every seek, and a
+ * session keeps its lines for as long as the stream runs. Image data becomes
+ * a blob: URL, added to `objectUrls` for the caller to revoke.
+ */
+export function newLines(received: MpvStreamedSubtitleLine[], seen: Set<string>, objectUrls: string[]): MpvStreamedSubtitleLine[] {
+    const fresh: MpvStreamedSubtitleLine[] = []
+    for (const line of received) {
+        const key = streamedLineKey(line)
+        if (seen.has(key)) continue
+        seen.add(key)
+        const url = line.image ? imageObjectUrl(line.image.src) : null
+        if (url && line.image) {
+            objectUrls.push(url)
+            fresh.push({ ...line, image: { ...line.image, src: url } })
+        } else {
+            fresh.push(line)
+        }
+    }
+    return fresh
+}
+
+/**
+ * A base64 data: URL as a blob: URL: the image's bytes leave the JS heap,
+ * where a long stream's PGS images added up as strings. Null where that
+ * can't be done; the data URL is kept then.
+ */
+export function imageObjectUrl(src: string): string | null {
+    const match = /^data:([^;,]+);base64,/.exec(src)
+    if (!match || typeof URL === "undefined" || typeof URL.createObjectURL !== "function" || typeof atob !== "function") return null
+    try {
+        const binary = atob(src.slice(match[0].length))
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        return URL.createObjectURL(new Blob([bytes], { type: match[1] }))
+    } catch {
+        return null
+    }
 }
 
 /** A PGS event: the server decoded it to a base64 PNG with its place on the video. */

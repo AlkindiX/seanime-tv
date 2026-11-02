@@ -13,12 +13,33 @@ import { Ionicons } from "@/lib/icons/Ionicons"
 import { animeCardStats, mediaTitle } from "@/lib/media-metadata"
 import { Image } from "expo-image"
 import * as React from "react"
-import { Pressable, Text, View } from "react-native"
+import { Platform, Pressable, Text, View } from "react-native"
+
+/**
+ * webOS draws the UI at 1920x1080 CSS pixels, and AniList's `large` cover
+ * (230 px wide) covers a card up to about this wide, focus scale included.
+ * `extraLarge` is about four times the pixels to decode and keep in the TV's
+ * memory for every mounted card.
+ */
+const LARGE_COVER_MAX_CARD_WIDTH = 250
+
+/**
+ * webOS: expo-image's `blurRadius` becomes a CSS `filter: blur()`, which the
+ * TV redraws whenever the card scales or scrolls. A blurred adult cover is a
+ * plain placeholder there instead.
+ */
+const CSS_BLUR = Platform.OS === "web"
 
 type TVMediaCardProps = {
     media: AL_BaseAnime
     width: number
-    onPress: () => void
+    onPress?: () => void
+    /**
+     * Called with this card's media. Lists pass one handler for every card
+     * instead of a new closure per card, so React.memo skips cards whose data
+     * didn't change.
+     */
+    onPressMedia?: (media: AL_BaseAnime) => void
     preferred?: boolean
     badge?: string
     listData?: Anime_EntryListData
@@ -33,6 +54,7 @@ export const TVMediaCard = React.memo(function TVMediaCard({
     media,
     width,
     onPress,
+    onPressMedia,
     preferred,
     badge,
     listData: listProp,
@@ -50,7 +72,9 @@ export const TVMediaCard = React.memo(function TVMediaCard({
     const library = syncedLibrary?.libraryData ?? libraryProp
     const nakama = syncedLibrary?.nakamaLibraryData ?? nakamaProp
     const title = mediaTitle(media)
-    const image = media.coverImage?.extraLarge
+    const preferLarge = Platform.OS === "web" && width <= LARGE_COVER_MAX_CARD_WIDTH
+    const image = (preferLarge ? media.coverImage?.large : undefined)
+        ?? media.coverImage?.extraLarge
         ?? media.coverImage?.large
         ?? media.coverImage?.medium
     const showUnwatched = cardSettings.showUnwatchedCount
@@ -61,10 +85,11 @@ export const TVMediaCard = React.memo(function TVMediaCard({
     const showScore = showAudienceScore && !hideAudienceScore && !!media.meanScore
 
     const isPreferred = usePreferredFocus(preferred)
+    const handlePress = onPress ?? (() => onPressMedia?.(media))
 
     return (
         <Pressable
-            onPress={onPress}
+            onPress={handlePress}
             onFocus={focusState.focus}
             onBlur={focusState.blur}
             hasTVPreferredFocus={isPreferred}
@@ -85,15 +110,17 @@ export const TVMediaCard = React.memo(function TVMediaCard({
                         borderColor: focusState.focused ? "#fff" : "transparent",
                     }}
                 >
-                    <Image
-                        source={image ? { uri: image } : undefined}
-                        style={{ width: "100%", height: "100%" }}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                        transition={120}
-                        recyclingKey={String(media.id)}
-                        blurRadius={blurAdult ? tvSize(18) : 0}
-                    />
+                    {blurAdult && CSS_BLUR ? null : (
+                        <Image
+                            source={image ? { uri: image } : undefined}
+                            style={{ width: "100%", height: "100%" }}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                            transition={120}
+                            recyclingKey={String(media.id)}
+                            blurRadius={blurAdult ? tvSize(18) : 0}
+                        />
+                    )}
                     {blurAdult ? (
                         <View
                             style={{

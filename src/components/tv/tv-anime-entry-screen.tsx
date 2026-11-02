@@ -24,7 +24,7 @@ import {
 import { Image } from "expo-image"
 import { LinearGradient } from "expo-linear-gradient"
 import * as React from "react"
-import { ScrollView, Text, View, Animated, Pressable, FlatList, TVFocusGuideView } from "react-native"
+import { ScrollView, Text, View, Animated, Platform, Pressable, FlatList, TVFocusGuideView } from "react-native"
 import { useAnimeEntryScreen } from "@/components/features/media/anime-entry-screen-context"
 import { useIsServerConnected, useServerConnectionState, useServerLocalAnimeEntry, useServerLocalIdentity } from "@/lib/offline"
 import { usePlaybackCoordinator } from "@/lib/player"
@@ -85,21 +85,41 @@ export function TVAnimeEntryScreen({
 
     const { playLocalFileEpisode, playServerLocalFileEpisode } = usePlaybackCoordinator(entry)
 
-    const setEpisodeRef = React.useCallback((
-        view: "library" | "server-local",
-        episode: number,
-        node: FocusNode | null,
-    ) => {
+    // One ref callback per episode, kept: a new one on every render would
+    // detach and re-attach each card's ref and defeat React.memo on the cards.
+    const episodeRefCallbacks = React.useRef(new Map<string, (node: FocusNode | null) => void>())
+    const episodeRef = React.useCallback((view: "library" | "server-local", episode: number) => {
         const key = `${view}:${episode}`
-        if (node) {
-            episodeRefs.current.set(key, node)
-        } else {
-            episodeRefs.current.delete(key)
+        let callback = episodeRefCallbacks.current.get(key)
+        if (!callback) {
+            callback = (node: FocusNode | null) => {
+                if (node) {
+                    episodeRefs.current.set(key, node)
+                } else {
+                    episodeRefs.current.delete(key)
+                }
+            }
+            episodeRefCallbacks.current.set(key, callback)
         }
+        return callback
+    }, [])
+
+    // Every card gets the same press handler, which reads the latest
+    // playback functions from here.
+    const playbackRef = React.useRef({ playLocalFileEpisode, playServerLocalFileEpisode, serverLocalEntry })
+    React.useLayoutEffect(() => {
+        playbackRef.current = { playLocalFileEpisode, playServerLocalFileEpisode, serverLocalEntry }
+    })
+    const playEpisode = React.useCallback((episode: Anime_Episode) => {
+        playbackRef.current.playLocalFileEpisode(episode)
+    }, [])
+    const playServerEpisode = React.useCallback((episode: Anime_Episode) => {
+        const { playServerLocalFileEpisode: play, serverLocalEntry: localEntry } = playbackRef.current
+        void play(episode, localEntry)
     }, [])
 
     const { mainEpisodes, specialEpisodes, ncEpisodes, unwatchedMainEpisodes, progress } = React.useMemo(() => {
-        if (!entry?.episodes) {
+        if (!entry.episodes) {
             return {
                 mainEpisodes: [] as Anime_Episode[],
                 specialEpisodes: [] as Anime_Episode[],
@@ -121,7 +141,7 @@ export function TVAnimeEntryScreen({
             unwatchedMainEpisodes: main.filter(episode => episode.progressNumber > currentProgress).slice(0, 15),
             progress: currentProgress,
         }
-    }, [entry?.episodes, entry?.listData?.progress])
+    }, [entry.episodes, entry.listData?.progress])
 
     const mainEpisodesInitialPage = React.useMemo(() => {
         if (progress > 0) {
@@ -152,16 +172,20 @@ export function TVAnimeEntryScreen({
         return first > 0 ? Math.floor(first / 24) : 0
     }, [serverGroups.main, serverGroups.progress])
 
+    // No `entry.media?.…` default parameter here: the React Compiler can't
+    // handle one and would skip this whole screen.
     const cardProps = React.useCallback((
         item: Anime_Episode,
         watchedProgress = progress,
-        fallbackImage = entry.media?.bannerImage,
+        fallbackImageArg?: string,
     ) => {
+        const fallbackImage = fallbackImageArg === undefined ? entry.media?.bannerImage : fallbackImageArg
         const spoiler = getEpisodeSpoilerState(serverStatus, {
             episodeNumber: item.progressNumber || item.episodeNumber,
             watchedProgress,
         })
         const completed = item.type === "main" && item.progressNumber <= watchedProgress
+        const blurAdult = !!serverStatus?.settings?.anilist?.blurAdultContent && !!entry.media?.isAdult
         return {
             image: item.episodeMetadata?.image ?? fallbackImage,
             duration: item.episodeMetadata?.length,
@@ -173,22 +197,26 @@ export function TVAnimeEntryScreen({
             progressPercent: getEpisodePercentageComplete(watchHistory, entry.mediaId, item.progressNumber),
             completed,
             filler: item.episodeMetadata?.isFiller,
-            blurred: spoiler.hideThumbnail || (!!serverStatus?.settings?.anilist?.blurAdultContent && !!entry.media?.isAdult),
+            blurred: spoiler.hideThumbnail || blurAdult,
+            // webOS shows this dimmed instead of blurring: the show's art hides
+            // an episode spoiler; adult content gets a plain placeholder.
+            blurredImage: blurAdult ? undefined : fallbackImage ?? entry.media?.coverImage?.large,
         }
-    }, [entry.media?.bannerImage, entry.media?.isAdult, entry.mediaId, progress, serverStatus, watchHistory])
+    }, [entry.media?.bannerImage, entry.media?.coverImage?.large, entry.media?.isAdult, entry.mediaId, progress, serverStatus, watchHistory])
 
     const renderEpisode = React.useCallback((item: Anime_Episode, index: number) => {
         const props = cardProps(item)
         return (
             <TVEpisodeCard
-                ref={node => setEpisodeRef("library", item.episodeNumber, node)}
+                ref={episodeRef("library", item.episodeNumber)}
                 key={item.localFile?.path || `${item.type}-${item.episodeNumber}-${index}`}
                 {...props}
-                onPress={() => playLocalFileEpisode(item)}
+                episode={item}
+                onPressEpisode={playEpisode}
                 recyclingKey={item.localFile?.path || `tv-episode-${item.episodeNumber}-${index}`}
             />
         )
-    }, [cardProps, playLocalFileEpisode, setEpisodeRef])
+    }, [cardProps, episodeRef, playEpisode])
 
     const renderServerEpisode = React.useCallback((item: Anime_Episode, index: number) => {
         const props = cardProps(
@@ -198,14 +226,15 @@ export function TVAnimeEntryScreen({
         )
         return (
             <TVEpisodeCard
-                ref={node => setEpisodeRef("server-local", item.episodeNumber, node)}
+                ref={episodeRef("server-local", item.episodeNumber)}
                 key={item.localFile?.path || `server-${item.type}-${item.episodeNumber}-${index}`}
                 {...props}
-                onPress={() => void playServerLocalFileEpisode(item, serverLocalEntry)}
+                episode={item}
+                onPressEpisode={playServerEpisode}
                 recyclingKey={item.localFile?.path || `tv-server-episode-${item.episodeNumber}-${index}`}
             />
         )
-    }, [cardProps, entry.media?.bannerImage, playServerLocalFileEpisode, serverGroups.progress, serverLocalEntry, setEpisodeRef])
+    }, [cardProps, entry.media?.bannerImage, episodeRef, playServerEpisode, serverGroups.progress, serverLocalEntry?.media?.bannerImage])
 
     const nextEpisodeToPlay = unwatchedMainEpisodes[0] || mainEpisodes[0]
     const serverNextEpisode = serverGroups.unwatched[0] || serverGroups.main[0]
@@ -783,6 +812,15 @@ const TVCharacterCard = React.memo(function TVCharacterCard({ edge }: TVCharacte
 })
 
 
+/**
+ * webOS: the tab indicator slides with a CSS transition on transform (run by
+ * the compositor) instead of Animated springs on left/width, which run in
+ * JavaScript there and re-lay out the tab row every frame.
+ */
+const CSS_TAB_INDICATOR = Platform.OS === "web"
+/** The indicator's laid-out width on webOS; scaleX stretches it to the tab's. */
+const TAB_INDICATOR_BASE_WIDTH = 100
+
 type TVTabBarProps = {
     tabs: { key: AnimeEntryView; label: string }[]
     activeKey: AnimeEntryView
@@ -792,13 +830,21 @@ type TVTabBarProps = {
 
 const TVTabBar = React.memo(function TVTabBar({ tabs, activeKey, activeRef, onTabPress }: TVTabBarProps) {
     const layouts = React.useRef<Record<string, { x: number; width: number }>>({})
-    const indicatorX = React.useRef(new Animated.Value(0)).current
-    const indicatorW = React.useRef(new Animated.Value(0)).current
+    // useState, not useRef(...).current: the React Compiler skips components
+    // that read refs while rendering.
+    const [indicatorX] = React.useState(() => new Animated.Value(0))
+    const [indicatorW] = React.useState(() => new Animated.Value(0))
     const hasInitialized = React.useRef(false)
+    const [cssIndicator, setCssIndicator] = React.useState<{ x: number; width: number } | null>(null)
 
     React.useEffect(() => {
         const target = layouts.current[activeKey]
         if (!target) return
+
+        if (CSS_TAB_INDICATOR) {
+            setCssIndicator(target)
+            return
+        }
 
         if (!hasInitialized.current) {
             indicatorX.setValue(target.x)
@@ -825,6 +871,12 @@ const TVTabBar = React.memo(function TVTabBar({ tabs, activeKey, activeRef, onTa
 
     const handleLayout = React.useCallback((key: string, x: number, width: number) => {
         layouts.current[key] = { x, width }
+        if (CSS_TAB_INDICATOR) {
+            if (key === activeKey) {
+                setCssIndicator(current => current?.x === x && current.width === width ? current : { x, width })
+            }
+            return
+        }
         if (key === activeKey && !hasInitialized.current) {
             indicatorX.setValue(x)
             indicatorW.setValue(width)
@@ -861,18 +913,43 @@ const TVTabBar = React.memo(function TVTabBar({ tabs, activeKey, activeRef, onTa
                         onTabLayout={handleLayout}
                     />
                 ))}
-                <Animated.View
-                    style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: indicatorX,
-                        width: indicatorW,
-                        height: tvSize(3),
-                        borderTopLeftRadius: tvSize(2),
-                        borderTopRightRadius: tvSize(2),
-                        backgroundColor: "#a89fff",
-                    }}
-                />
+                {CSS_TAB_INDICATOR ? (
+                    cssIndicator ? (
+                        <View
+                            style={{
+                                position: "absolute",
+                                bottom: 0,
+                                left: 0,
+                                width: TAB_INDICATOR_BASE_WIDTH,
+                                height: tvSize(3),
+                                borderTopLeftRadius: tvSize(2),
+                                borderTopRightRadius: tvSize(2),
+                                backgroundColor: "#a89fff",
+                                transformOrigin: "left",
+                                transform: [
+                                    { translateX: cssIndicator.x },
+                                    { scaleX: cssIndicator.width / TAB_INDICATOR_BASE_WIDTH },
+                                ],
+                                transitionProperty: "transform",
+                                transitionDuration: "260ms",
+                                transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+                            } as object}
+                        />
+                    ) : null
+                ) : (
+                    <Animated.View
+                        style={{
+                            position: "absolute",
+                            bottom: 0,
+                            left: indicatorX,
+                            width: indicatorW,
+                            height: tvSize(3),
+                            borderTopLeftRadius: tvSize(2),
+                            borderTopRightRadius: tvSize(2),
+                            backgroundColor: "#a89fff",
+                        }}
+                    />
+                )}
             </View>
         </View>
     )

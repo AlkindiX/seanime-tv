@@ -14,7 +14,7 @@ import { TVButton, TVPillButton } from "@/components/tv/tv-focus"
 import { TVInput } from "@/components/tv/tv-input"
 import { tvSize } from "@/components/tv/tv-scale"
 import { useIsServerConnected } from "@/lib/offline"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { FlatList, Pressable, ScrollView, Text, TVFocusGuideView, View } from "react-native"
 

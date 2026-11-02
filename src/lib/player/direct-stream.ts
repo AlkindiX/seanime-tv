@@ -6,7 +6,7 @@ import type { MKVParser_Metadata, NativePlayer_PlaybackInfo } from "@/api/genera
 import { logger } from "@/lib/utils/logger"
 import type { MpvChapter, MpvMediaEvent, MpvStreamedSubtitleLine, MpvStreamedSubtitles } from "expo-mpv-player"
 import { Platform } from "react-native"
-import { eventsOf, toLines } from "./direct-stream-format"
+import { eventsOf, newLines, toLines } from "./direct-stream-format"
 import { probeStreamUrl } from "./kept-direct-stream"
 import type { MobilePlaybackSource } from "./types"
 
@@ -156,6 +156,10 @@ export function createDirectStreamSession(source: MobilePlaybackSource): DirectS
     }))
 
     const lines: MpvStreamedSubtitleLine[] = []
+    /** Keys of the lines in `lines`: the server sends them again after every seek. */
+    const seenLines = new Set<string>()
+    /** blob: URLs of the image lines, freed when the session ends. */
+    const objectUrls: string[] = []
     const listeners = new Set<(lines: MpvStreamedSubtitleLine[]) => void>()
     let loaded = false
     let terminated = false
@@ -174,7 +178,7 @@ export function createDirectStreamSession(source: MobilePlaybackSource): DirectS
         if (message.type !== NATIVE_PLAYER_EVENT) return
         const event = parseNativePlayerEvent(message.payload)
         if (event?.type !== "subtitle-event") return
-        const received = toLines(eventsOf(event.payload, playbackId))
+        const received = newLines(toLines(eventsOf(event.payload, playbackId)), seenLines, objectUrls)
         if (received.length === 0) return
         lines.push(...received)
         for (const listener of listeners) listener(received)
@@ -211,6 +215,11 @@ export function createDirectStreamSession(source: MobilePlaybackSource): DirectS
         terminated = true
         unsubscribe()
         listeners.clear()
+        // The player showing them is gone with the stream.
+        for (const url of objectUrls) URL.revokeObjectURL(url)
+        objectUrls.length = 0
+        lines.length = 0
+        seenLines.clear()
     }
 
     return {
