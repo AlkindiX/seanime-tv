@@ -17,7 +17,7 @@ import {
 } from "@/lib/downloads"
 import { usePlaybackCoordinator } from "@/lib/player"
 import type { MobilePlaybackSource } from "@/lib/player/types"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { Alert, Pressable, Text, useWindowDimensions, View } from "react-native"
 

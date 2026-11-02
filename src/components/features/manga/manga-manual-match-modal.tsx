@@ -3,7 +3,7 @@ import { useGetMangaMapping, useMangaManualMapping, useMangaManualSearch, useRem
 import { SheetFooter, SheetFooterButton } from "@/components/shared/sheet-footer"
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { cn } from "@/lib/utils"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet"
 import * as React from "react"
 import { ActivityIndicator, Pressable, Text, View } from "react-native"

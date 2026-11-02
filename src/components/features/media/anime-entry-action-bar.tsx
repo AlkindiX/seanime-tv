@@ -4,7 +4,7 @@ import { ServerDownloadModal } from "@/components/features/media/server-download
 import { Button } from "@/components/ui/button"
 import { useCompletedEpisodesForMedia, useIsLocalServer } from "@/lib/downloads"
 import { useIsServerConnected } from "@/lib/offline"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import React, { useMemo, useState } from "react"
 import { Text, View } from "react-native"
 

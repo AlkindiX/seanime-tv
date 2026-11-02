@@ -1,7 +1,7 @@
 import { SeaBottomSheet } from "@/components/ui/bottom-sheet"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { MenuView } from "@react-native-menu/menu"
 import { ExpoNativeMenuView } from "expo-native-menu"
 import * as React from "react"

@@ -8,7 +8,7 @@ import { Surface } from "@/components/shared/surface"
 import { getEpisodeSpoilerState, getSequentialContinueWatchingSpoilerActive } from "@/lib/anime-spoilers"
 import * as React from "react"
 import { Platform, Pressable, Text, TVFocusGuideView, View } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import type { StreamMode } from "./use-torrent-stream-controller"
 
 import { TVEpisodeCard, TVEpisodeGrid, TVEpisodePlayButton, TVPillButton, tvSize } from "@/components/tv"

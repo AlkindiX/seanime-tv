@@ -4,7 +4,7 @@ import { formatMangaReaderHref, getPreferredStartChapter } from "@/components/fe
 import { Button } from "@/components/ui/button"
 import { useAllDownloadedMangaChapters, useCompletedMangaChapters, useMangaDownloadQueueLength } from "@/lib/downloads/use-manga-downloads"
 import { useIsServerConnected } from "@/lib/offline"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { useRouter } from "expo-router"
 import React, { useMemo, useState } from "react"
 import { Platform, Text, View } from "react-native"

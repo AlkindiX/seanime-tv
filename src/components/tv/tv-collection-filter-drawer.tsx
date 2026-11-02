@@ -19,7 +19,7 @@ import {
     countActiveCollectionFilters,
     DEFAULT_COLLECTION_PARAMS,
 } from "@/lib/utils/filtering"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { ScrollView, TVFocusGuideView, View } from "react-native"
 

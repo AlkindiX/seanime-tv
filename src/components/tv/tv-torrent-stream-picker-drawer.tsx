@@ -21,7 +21,7 @@ import { CenteredSpinner } from "@/components/shared/centered-spinner"
 import { TVButton, TVDrawer, TVInput, TVPillButton, useTVFocus } from "@/components/tv"
 import type { TVInputHandle } from "@/components/tv/tv-input"
 import { ROW_OVERFLOW, tvSize } from "@/components/tv/tv-scale"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { Animated, FlatList, Platform, Pressable, ScrollView, Text, TVFocusGuideView, View } from "react-native"
 

@@ -1,6 +1,6 @@
 import { TVButton } from "@/components/tv/tv-focus"
 import { tvSize } from "@/components/tv/tv-scale"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { Animated, Modal, Pressable, Text, View, TVFocusGuideView, ViewStyle } from "react-native"
 

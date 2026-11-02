@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { getEpisodeSpoilerState, getSpoilerSafeAnimeImage } from "@/lib/anime-spoilers"
 import { type DownloadStatus, getDownloadEpisodeId, useDownloadedEpisodesForMedia, useStartAnimeBatchDownload } from "@/lib/downloads"
 import { cn } from "@/lib/utils"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import React, { useCallback, useMemo, useState } from "react"
 import { Pressable, ScrollView, Text, View } from "react-native"
 

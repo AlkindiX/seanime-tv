@@ -12,7 +12,7 @@ import {
     useMangaDownloadDiskUsage,
 } from "@/lib/downloads"
 import { type DownloadedMangaInfo } from "@/lib/downloads/manga-download-store"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { Image } from "expo-image"
 import { Redirect, router } from "expo-router"
 import React from "react"

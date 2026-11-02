@@ -1,6 +1,6 @@
 import * as React from "react"
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Animated, TVFocusGuideView } from "react-native"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { TVDrawer } from "./tv-drawer"
 import { TVInput, type TVInputHandle } from "./tv-input"
 import { TVButton, useTVFocus } from "./tv-focus"

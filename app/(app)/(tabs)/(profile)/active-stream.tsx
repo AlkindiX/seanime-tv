@@ -16,7 +16,7 @@ import {
     torrentStreamPendingInfoAtom,
     torrentStreamStatusAtom,
 } from "@/lib/player"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import { useAtom, useAtomValue } from "jotai"
 import * as React from "react"
 import { Alert, Platform, ScrollView, Text, View } from "react-native"

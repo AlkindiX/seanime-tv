@@ -16,7 +16,7 @@ import {
 } from "@/lib/search/search-constants"
 import { DEFAULT_SEARCH_PARAMS, getActiveFiltersCount, type SearchParams } from "@/lib/search/search.atoms"
 import { removeAdultTags, type MediaTag } from "@/lib/search/tag-filter"
-import { Ionicons } from "@expo/vector-icons"
+import Ionicons from "@expo/vector-icons/Ionicons"
 import * as React from "react"
 import { ScrollView, TVFocusGuideView, View } from "react-native"
 
