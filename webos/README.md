@@ -545,14 +545,18 @@ webOS setup (see `metro.config.js`):
   transcoded, extracted subtitles, chapters, start position), with the rules in
   `src/lib/webos/playback-capabilities.ts` and the TV's facts from `device-info.ts` and
   `luna.ts`.
-- `webos/build.mjs` builds the app. It makes every URL relative so the app works from
+- `webos/build.mjs` builds the app. The web part, shared with the Samsung build
+  (`tizen/build.mjs`, see [tizen/README.md](../tizen/README.md)), is in `webos/web-app.mjs`:
+  it makes every URL relative so the app works from
   `file://`, and lowers JS/CSS to Chromium 79: Tailwind's cascade layers, `@property`,
   `translate`/`scale`/`rotate` and logical shorthands such as `padding-inline` are
   rewritten. Flexbox `gap` and `aspect-ratio` can't be, so webOS 6 ignores them.
   CSS that react-native-web makes at runtime never passes through the build;
   `src/lib/webos/ordered-css-stylesheet.ts` rewrites what old engines drop there
-  (`overflow: clip`). It also adds polyfills, bundles the JS service
-  (`webos/service-build.mjs`) and writes the `.ipk`.
+  (`overflow: clip`). It also adds polyfills and JASSUB. `build.mjs` then bundles the
+  JS service (`webos/service-build.mjs`) and writes the `.ipk`.
+- The same bundle runs on Samsung Tizen TVs; `src/lib/webos/tizen-platform.ts` tells them
+  apart at runtime (`window.tizen`) for the remote keys, leaving the app, and the audio rules.
 - `webos/service/` is the JS service that relays the WebSocket (`relay.ts`, entry point
   `service.ts`), and `src/lib/webos/luna-websocket.ts` is its counterpart in the app. A
   desktop browser has no Luna bus, so `npm run dev:webos` uses the browser's WebSocket.

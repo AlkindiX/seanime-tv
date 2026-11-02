@@ -8,9 +8,10 @@ server (a self-hosted anime/manga media server). One Expo / React Native codebas
 | Android, iOS (phone) | Expo native builds | libmpv (`modules/expo-mpv-player`) |
 | Android TV, tvOS | react-native-tvos (`EXPO_TV=1`) | libmpv |
 | **LG webOS TV** | the TV UI as a web app via react-native-web (`SEANIME_WEBOS=1`), packaged as an `.ipk` | HTML5 `<video>` (`MpvPlayerView.web.tsx`) |
+| **Samsung Tizen TV** (2022+) | the same web app (same bundle), packaged as a `.wgt` by `tizen/build.mjs` | HTML5 `<video>` |
 
 Most recent work is on **webOS**; `webos/README.md` is its user-facing reference and
-lists what is not yet verified on a real TV.
+lists what is not yet verified on a real TV. `tizen/README.md` covers Samsung (untested on a TV).
 
 ## Where things are
 
@@ -41,9 +42,11 @@ src/lib/
 src/atoms/                jotai atoms (server URL/token in MMKV via atoms/storage.ts)
 modules/expo-mpv-player/  player module: native mpv + web/ (web-video-player.ts, subtitles.ts,
                           libass.ts = JASSUB/libass for ASS; streamed tracks feed it)
-webos/                    build.mjs (export -> lower JS/CSS for Chromium 79 -> polyfills -> JASSUB ->
-                          JS service -> .ipk), jassub.mjs, service-build.mjs, service/ (WebSocket
-                          relay for Node 8), appinfo.json, README.md
+webos/                    web-app.mjs (shared: export -> lower JS/CSS for Chromium 79 -> polyfills ->
+                          JASSUB), build.mjs (web app -> JS service -> .ipk), jassub.mjs,
+                          service-build.mjs, service/ (WebSocket relay for Node 8), appinfo.json, README.md
+tizen/                    build.mjs (web app -> config.xml -> unsigned .wgt, signed with
+                          TIZEN_SECURITY_PROFILE), config.xml, README.md
 tests/*.test.ts           node:test unit tests (pure modules only)
 ```
 
@@ -75,7 +78,14 @@ tests/*.test.ts           node:test unit tests (pure modules only)
   load from blob URLs, and `install.ts` keeps the document URL fixed while routing.
 - Target browsers: webOS 6 = Chromium 79 (build target), webOS 22 = 87, webOS 23 (LG C3) = 94.
   `webos/build.mjs` lowers JS/CSS and adds core-js polyfills; `css-compat.ts` covers CSS gaps.
-- `Platform.OS === "web"` means webOS in this repo; `Platform.isTV` is true there too.
+- `Platform.OS === "web"` means webOS **or Samsung Tizen** in this repo; `Platform.isTV` is
+  true there too. Tell them apart at runtime with `tizen-platform.ts` (`window.tizen`:
+  `isTizenDevice()`, `currentTVPlatform()`, `tvBrand()` for "LG"/"Samsung" in messages).
+  webOS-only objects (`PalmSystem`, Luna) are already guarded and do nothing on Tizen.
+- Tizen keys: Back is 10009, play/pause 10252, CH+/- 427/428; media, colour and number keys
+  arrive only after `registerTizenKeys()` (called once from `use-webos-runtime.web.ts`).
+  Tizen has no relay service; the app tries without a password and reports a refusal
+  (`isWebsocketRefusedForOrigin`) only after its own WebSocket handshake failed.
 
 ## Commands
 
@@ -85,6 +95,8 @@ npm test                    # node:test, tests/*.test.ts (~60 tests, a few secon
 npx tsc --noEmit -p .       # typecheck; app/_layout.tsx global.css TS2882 is pre-existing, ignore it
 npm run build:webos         # -> dist/webos/app/ and dist/webos/app.seanime.tenji_<v>_all.ipk (~2-3 min)
 npm run serve:webos         # serves dist/webos/app on :8090 for a desktop browser (routes + relative assets handled)
+npm run build:tizen         # -> dist/tizen/app/ and dist/tizen/SeanimeTenji_<v>.wgt (unsigned; same export steps)
+npm run serve:tizen         # serves dist/tizen/app on :8090
 npm run dev:webos           # dev server on :8083 (TV UI in Chrome at 1920x1080; arrows/Enter/Esc = remote)
 ```
 
