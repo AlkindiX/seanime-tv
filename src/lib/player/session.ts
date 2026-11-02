@@ -467,6 +467,10 @@ export function usePlayerEventListener() {
     const lastStreamStateLogRef = React.useRef<string | null>(null)
     const pendingInfo = useAtomValue(torrentStreamPendingInfoAtom)
     const streamSessionMode = useAtomValue(streamSessionModeAtom)
+    // The TV player starts the next episode itself and stays open for it.
+    const playerOpen = useAtomValue(playerOpenAtom)
+    const playerOpenRef = React.useRef(playerOpen)
+    playerOpenRef.current = playerOpen
     /** When the pending start was set, to tell a "stopped" for the previous stream from one for it. */
     const pendingSinceRef = React.useRef(0)
     React.useEffect(() => {
@@ -604,17 +608,21 @@ export function usePlayerEventListener() {
                         }
 
                         log.warning("Failed to open external player URL, falling back to internal route")
-                        setSource(source)
-                        setPlayerOpen(true)
-                        router.push("/(app)/(media)/player" as never)
+                        showInPlayer(source)
                     })
                     return
                 }
 
                 log.info("Opening internal media player")
+                showInPlayer(source)
+            }
+
+            /** The open player switches to the source; otherwise the player opens on it. */
+            const showInPlayer = (source: MobilePlaybackSource) => {
+                const alreadyOpen = playerOpenRef.current
                 setSource(source)
                 setPlayerOpen(true)
-                router.push("/(app)/(media)/player" as never)
+                if (!alreadyOpen) router.push("/(app)/(media)/player" as never)
             }
 
             // Direct stream (web build): the server prepares the stream, then says where to play it.

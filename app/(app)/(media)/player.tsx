@@ -37,8 +37,10 @@ import { PlayerPanelOverlay } from "@/components/features/player/player-panel"
 import { getBufferedRatio } from "@/components/features/player/progress"
 import type { PlayerPanel } from "@/components/features/player/types"
 import { createGestureRefs, syncGestureRef } from "@/components/features/player/types"
+import { type NextStreamRequest, PlayerNextStream, PlayerNextStreamProgress } from "@/components/features/torrentstream/player-next-stream"
 import { TVPlayerControls, TVPlayerDialog, TVPlayerPanel } from "@/components/tv"
 import { playPlayerExit } from "@/components/tv/tv-player-exit"
+import { tvSize } from "@/components/tv/tv-scale"
 import { useTVScrub } from "@/components/tv/use-tv-scrub"
 import { isLocalServer } from "@/lib/downloads"
 import { useIsServerConnected } from "@/lib/offline"
@@ -135,6 +137,22 @@ function useStableHandlers<T extends Handlers>(handlers: T): T {
     return result as T
 }
 
+/** The streams whose next episode the TV player starts itself; a manual pick needs the show page's picker. */
+function streamRequestFor(action: MobilePlaybackSource["nextEpisodeAction"], mediaId: number, episodeNumber: number): NextStreamRequest | null {
+    switch (action) {
+        case "torrentstream-auto-select":
+            return { kind: "auto-select", mode: "torrent", mediaId, episodeNumber }
+        case "torrentstream-previous-batch":
+            return { kind: "previous-batch", mode: "torrent", mediaId, episodeNumber }
+        case "debridstream-auto-select":
+            return { kind: "auto-select", mode: "debrid", mediaId, episodeNumber }
+        case "debridstream-previous-batch":
+            return { kind: "previous-batch", mode: "debrid", mediaId, episodeNumber }
+        default:
+            return null
+    }
+}
+
 export default function PlayerScreen() {
     return <PlayerScreenInner />
 }
@@ -191,10 +209,13 @@ function PlayerScreenInner() {
     const [, setReturnFocus] = useAtom(tvReturnFocusAtom)
     const [, setOnlineServer] = useAtom(selectedServerAtom)
     const [, setOnlineQuality] = useAtom(selectedQualityAtom)
-    const loadingMessage = useAtomValue(playerLoadingMessageAtom)
+    const [loadingMessage, setLoadingMessage] = useAtom(playerLoadingMessageAtom)
     const error = useAtomValue(playerErrorAtom)
     const [nextEpisodePrompt, setNextEpisodePrompt] = React.useState<NextEpisodePrompt | null>(null)
     const [showExitPrompt, setShowExitPrompt] = React.useState(false)
+    /** TV: the next stream being started from the player, which shows its loading screen meanwhile. */
+    const [nextStream, setNextStream] = React.useState<NextStreamRequest & { label: string; entryView: MobilePlaybackSource["entryView"] } | null>(null)
+    const nextStreamCancelRef = React.useRef<(() => void) | null>(null)
 
     // player + prefs
     const [prefs, updatePrefs] = usePlayerPreferences()
@@ -816,6 +837,11 @@ function PlayerScreenInner() {
 
     const handleBack = React.useCallback(() => {
         saveReturnFocus()
+        // Back while the next stream starts cancels it.
+        if (nextStream) {
+            nextStreamCancelRef.current?.()
+            setReturnFocus({ mediaId: nextStream.mediaId, episodeNumber: nextStream.episodeNumber, view: nextStream.entryView })
+        }
         if (Platform.OS === "web") {
             // Saved before stop() resets the player's time, which the save on unmount reads.
             flushContinuity()
@@ -826,7 +852,8 @@ function PlayerScreenInner() {
         player.stop()
         stopTVTorrent()
         if (canGoBack()) back()
-    }, [back, canGoBack, error, flushContinuity, player, saveReturnFocus, source?.directStreamPlaybackId, state.status, stopTVTorrent])
+    }, [back, canGoBack, error, flushContinuity, nextStream, player, saveReturnFocus, setReturnFocus, source?.directStreamPlaybackId, state.status,
+        stopTVTorrent])
 
     // webOS: Back leaves at once, without asking. A torrent or debrid stream
     // keeps running on the server, so playing the episode again resumes it.
@@ -1083,6 +1110,55 @@ function PlayerScreenInner() {
         && source?.nextEpisodeAction !== "debridstream-manual"
     const remainingTime = Math.max(0, state.duration - state.currentTime)
 
+    /**
+     * TV: the next torrent or debrid episode starts from here. The player shows
+     * its loading screen until the stream is ready and then plays it, instead
+     * of going back to the show page to start it there.
+     */
+    const startStreamInPlayer = React.useCallback((request: NextStreamRequest, label: string) => {
+        if (!source) return
+        if (Platform.OS === "web") flushContinuity()
+        player.stop()
+        controls.clearHideTimer()
+        setNextStream({ ...request, label, entryView: source.entryView ?? "torrentstream" })
+        setLoadingMessage(`Starting ${label}…`)
+        // The loading screen shows while there is no source; the stream's "ready" event sets the next one.
+        setSource(null)
+    }, [controls.clearHideTimer, flushContinuity, player, setLoadingMessage, setSource, source])
+
+    /** Leaves the loading screen for the show page, which starts the episode itself when `withIntent`. */
+    const leaveNextStreamToEntry = React.useCallback((withIntent: boolean) => {
+        if (!nextStream) return
+        const { kind, mode, mediaId, episodeNumber, entryView } = nextStream
+        setNextStream(null)
+        setLoadingMessage(null)
+        setReturnFocus({ mediaId, episodeNumber, view: entryView })
+        if (withIntent) {
+            setPlaybackIntent(createAnimeEntryPlaybackIntent({
+                kind: `${mode === "debrid" ? "debridstream" : "torrentstream"}-${kind}`, mediaId, episodeNumber,
+            }))
+        }
+        if (canGoBack()) {
+            back()
+            return
+        }
+        replace({
+            pathname: "/(app)/entry/anime/[id]",
+            params: { id: String(mediaId), initialView: entryView },
+        })
+    }, [back, canGoBack, nextStream, replace, setLoadingMessage, setPlaybackIntent, setReturnFocus])
+
+    const nextStreamNeedsEntry = React.useCallback(() => leaveNextStreamToEntry(true), [leaveNextStreamToEntry])
+    const nextStreamFailed = React.useCallback(() => {
+        if (nextStream) toast.error(`Couldn't start ${nextStream.label}`)
+        leaveNextStreamToEntry(false)
+    }, [leaveNextStreamToEntry, nextStream])
+
+    // The next stream arrived and plays here.
+    React.useEffect(() => {
+        if (source && nextStream) setNextStream(null)
+    }, [nextStream, source])
+
     const playEpisodeSelection = React.useCallback((episode: Anime_Episode | null, episodeNumber: number | null) => {
         if (!source) return
 
@@ -1113,6 +1189,12 @@ function PlayerScreenInner() {
         }
 
         if (!episodeNumber) return
+
+        const inPlayer = Platform.isTV ? streamRequestFor(source.nextEpisodeAction, source.mediaId, episodeNumber) : null
+        if (inPlayer) {
+            startStreamInPlayer(inPlayer, episode?.displayTitle ?? `Episode ${episodeNumber}`)
+            return
+        }
 
         if (source.nextEpisodeAction === "torrentstream-auto-select") {
             setPlaybackIntent(createAnimeEntryPlaybackIntent({
@@ -1156,7 +1238,7 @@ function PlayerScreenInner() {
             }))
             closePlayerToEntry(source.entryView ?? "onlinestream", source.mediaId)
         }
-    }, [closePlayerToEntry, controls.scheduleHide, isServerConnected, serverUrl, setPlaybackIntent, setSource, source])
+    }, [closePlayerToEntry, controls.scheduleHide, isServerConnected, serverUrl, setPlaybackIntent, setSource, source, startStreamInPlayer])
 
     const playNextEpisode = React.useCallback(() => {
         playEpisodeSelection(nextEpisode, nextEpisodeNumber)
@@ -1491,7 +1573,24 @@ function PlayerScreenInner() {
             <View className="flex-1 bg-black items-center justify-center">
                 <StatusBar hidden />
                 <ActivityIndicator size="large" color="#ffffff" />
-                <Text className="text-white/70 mt-4 text-base">{loadingMessage}</Text>
+                <Text
+                    className="text-white/70 mt-4 text-base"
+                    style={Platform.isTV ? { fontSize: tvSize(26) } : undefined}
+                    accessibilityLabel={loadingMessage}
+                >
+                    {loadingMessage}
+                </Text>
+                {nextStream ? (
+                    <>
+                        <PlayerNextStreamProgress fontSize={Platform.isTV ? tvSize(20) : 14} />
+                        <PlayerNextStream
+                            request={nextStream}
+                            onNeedsEntry={nextStreamNeedsEntry}
+                            onFailed={nextStreamFailed}
+                            cancelRef={nextStreamCancelRef}
+                        />
+                    </>
+                ) : null}
             </View>
         )
     }
