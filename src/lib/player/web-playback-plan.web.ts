@@ -17,6 +17,7 @@ import {
     pixelBitDepth,
     videoCodecName,
 } from "@/lib/webos/playback-capabilities"
+import { tvBrand } from "@/lib/webos/tizen-platform"
 import { describeTVAudioTrack } from "@/lib/webos/tv-audio"
 import type { MpvChapter, MpvExternalSubtitle, MpvSourceAudioTrack } from "expo-mpv-player"
 import React from "react"
@@ -95,7 +96,7 @@ function toAudioTracks(mediaInfo: MediaInfo | undefined): MpvSourceAudioTrack[] 
 function announceAudioFallback(from: MpvSourceAudioTrack, to: MpvSourceAudioTrack) {
     const name = to.title || to.language
     log.info("Left an audio track the TV plays silently", { from: from.codec, to: to.codec, language: to.language })
-    toast.info(`Playing the ${name ? `${name} ` : "other "}audio track (${to.codec}): LG TVs play ${from.codec} with no or partial sound.`, {
+    toast.info(`Playing the ${name ? `${name} ` : "other "}audio track (${to.codec}): ${tvBrand()} TVs play ${from.codec} with no or partial sound.`, {
         visibilityTime: 6000,
     })
 }

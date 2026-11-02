@@ -36,6 +36,7 @@ import {
 } from "@/lib/player"
 import { logger } from "@/lib/utils/logger"
 import { toast } from "@/lib/utils/toast"
+import { tvBrand } from "@/lib/webos/tizen-platform"
 import { useAtom } from "jotai"
 import { useAtomValue, useSetAtom } from "jotai/react"
 import { useFocusEffect } from "expo-router"
@@ -701,7 +702,7 @@ export function useTorrentStreamController({ entry, mode = "stream" }: UseTorren
         [clearPendingStreamState, ensureLiveConnection, entry, mediaId, resetPicker, setActiveStreamSession, setDebridStreamState, setIsPreparing, setLoadingState,
             setPendingInfo, setStreamSessionMode, startDebridStream, startTorrentStream, streamMode])
 
-    // webOS: LG TVs don't play FLAC in a video and the server can't transcode
+    // Web TVs (LG, Samsung) don't reliably play FLAC in a video and the server can't transcode
     // a stream, so a comparable release without it is started instead.
     const choosePlayableAutoRelease = usePlayableAutoRelease({ entry, serverStatus, providerExtensions })
     const checkingReleaseRef = React.useRef(false)
@@ -725,7 +726,7 @@ export function useTorrentStreamController({ entry, mode = "stream" }: UseTorren
                 return
             }
             log.info("Starting a release without audio the TV can't play", { avoided: choice.avoided.name, instead: choice.torrent.name })
-            toast.info(`Picked ${choice.torrent.releaseGroup || "another release"} instead of a release with ${choice.problem} audio, which LG TVs may not play.`)
+            toast.info(`Picked ${choice.torrent.releaseGroup || "another release"} instead of a release with ${choice.problem} audio, which ${tvBrand()} TVs may not play.`)
             startManualStream({ episode, torrent: choice.torrent }, mode)
             // Still an auto-selected episode: the next one is auto-selected too.
             setPendingInfo(info => info && {
