@@ -109,6 +109,15 @@ function loadAssets(): Promise<Assets> {
     return assets
 }
 
+/**
+ * Reads libass's files ahead of need (while a video loads), so starting it
+ * later only has to start the worker. They are kept for the app's lifetime.
+ */
+export function preloadLibass() {
+    if (!supportsLibass()) return
+    loadAssets().catch(() => undefined)
+}
+
 export function supportsLibass() {
     return typeof Worker !== "undefined"
         && typeof WebAssembly !== "undefined"
@@ -126,12 +135,14 @@ export function supportsLibass() {
  */
 function driveFromVideoClock(video: HTMLVideoElement, instance: JassubInstance) {
     let stopped = false
+    /** Off while the subtitles are hidden or there is no track: nothing to draw. */
+    let active = true
     let timer: ReturnType<typeof setInterval> | null = null
     let lastTime = -1
     let lastFrameReport = 0
 
     const draw = (repaint: boolean) => {
-        if (stopped || !video.videoWidth || !video.videoHeight) return
+        if (stopped || !active || !video.videoWidth || !video.videoHeight) return
         if (!repaint && (video.currentTime === lastTime || performance.now() - lastFrameReport < FRAME_REPORT_FRESH_MS)) return
         lastTime = video.currentTime
         instance.manualRender({
@@ -146,7 +157,7 @@ function driveFromVideoClock(video: HTMLVideoElement, instance: JassubInstance) 
         timer = null
     }
     const onPlaying = () => {
-        timer ??= setInterval(() => draw(false), CLOCK_FRAME_MS)
+        if (active) timer ??= setInterval(() => draw(false), CLOCK_FRAME_MS)
     }
     const onPause = () => {
         stopTimer()
@@ -170,6 +181,16 @@ function driveFromVideoClock(video: HTMLVideoElement, instance: JassubInstance) 
 
     return {
         redraw: () => draw(true),
+        setActive: (value: boolean) => {
+            if (value === active) return
+            active = value
+            if (!active) {
+                stopTimer()
+                return
+            }
+            if (!video.paused) onPlaying()
+            draw(true)
+        },
         stop: () => {
             stopped = true
             stopTimer()
@@ -254,9 +275,11 @@ export class LibassRenderer {
     }
 
     async addChunks(chunks: readonly AssChunk[]) {
-        for (const chunk of chunks) {
-            await this.instance.renderer.processChunk(chunk.data, chunk.start, chunk.duration)
-        }
+        // Sent all at once rather than one worker round trip each (a seek or a
+        // late start replays hundreds): the worker handles its messages in the
+        // order they were posted, so libass still reads them in order.
+        const { renderer } = this.instance
+        await Promise.all(chunks.map(chunk => renderer.processChunk(chunk.data, chunk.start, chunk.duration)))
         this.clock?.redraw()
     }
 
@@ -266,8 +289,10 @@ export class LibassRenderer {
         this.clock?.redraw()
     }
 
+    /** Hidden, the video's clock stops driving it; shown, it draws the current time again. */
     setVisible(visible: boolean) {
         this.canvas.style.visibility = visible ? "visible" : "hidden"
+        this.clock?.setActive(visible)
     }
 
     destroy() {

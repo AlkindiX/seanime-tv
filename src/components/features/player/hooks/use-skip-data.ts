@@ -69,54 +69,54 @@ export function useSkipData({
     autoSkipOpEd,
     playerSeekTo,
 }: UseSkipDataProps) {
-    const [skipData, setSkipData] = React.useState<SkipData>({ op: null, ed: null })
     const lastAutoSkippedRef = React.useRef<string | null>(null)
 
     React.useEffect(() => {
         lastAutoSkippedRef.current = null
     }, [source?.id])
 
+    const chapterSkip = getChaptersSkipData(chapters, duration)
+    const malId = source?.media?.idMal
+    const epNum = source?.episodeNumber
+    // AniSkip only fills in what the chapters don't have, and only once the
+    // duration is known: chapters and duration settle over the first events
+    // of a load, and asking again for each of them sent several requests.
+    const aniskipKey = duration > 0 && malId && epNum && !(chapterSkip.op && chapterSkip.ed) ? `${malId}/${epNum}` : null
+    const [aniskip, setAniskip] = React.useState<{ key: string; data: SkipData } | null>(null)
+    const aniskipFetchedRef = React.useRef<string | null>(null)
+
     React.useEffect(() => {
-        const chapterSkip = getChaptersSkipData(chapters, duration)
-
-        if (chapterSkip.op && chapterSkip.ed) {
-            setSkipData(chapterSkip)
-            return
-        }
-
-        const malId = source?.media?.idMal
-        const epNum = source?.episodeNumber
-
-        if (!malId || !epNum) {
-            setSkipData(chapterSkip)
-            return
-        }
+        if (!aniskipKey || aniskipFetchedRef.current === aniskipKey) return
 
         let active = true
         fetch(`https://api.aniskip.com/v2/skip-times/${malId}/${epNum}?types[]=ed&types[]=mixed-ed&types[]=mixed-op&types[]=op&types[]=recap&episodeLength=`)
             .then(res => res.json())
             .then(data => {
                 if (!active) return
-                if (data && data.found && data.results) {
-                    const aniOp = data.results.find((r: any) => r.skipType === "op" || r.skipType === "mixed-op")
-                    const aniEd = data.results.find((r: any) => r.skipType === "ed" || r.skipType === "mixed-ed")
-
-                    setSkipData({
-                        op: chapterSkip.op || (aniOp ? { interval: { startTime: aniOp.interval.startTime, endTime: aniOp.interval.endTime } } : null),
-                        ed: chapterSkip.ed || (aniEd ? { interval: { startTime: aniEd.interval.startTime, endTime: aniEd.interval.endTime } } : null),
-                    })
-                } else {
-                    setSkipData(chapterSkip)
-                }
+                const results = data && data.found && data.results ? data.results : []
+                const aniOp = results.find((r: any) => r.skipType === "op" || r.skipType === "mixed-op")
+                const aniEd = results.find((r: any) => r.skipType === "ed" || r.skipType === "mixed-ed")
+                aniskipFetchedRef.current = aniskipKey
+                setAniskip({
+                    key: aniskipKey,
+                    data: {
+                        op: aniOp ? { interval: { startTime: aniOp.interval.startTime, endTime: aniOp.interval.endTime } } : null,
+                        ed: aniEd ? { interval: { startTime: aniEd.interval.startTime, endTime: aniEd.interval.endTime } } : null,
+                    },
+                })
             })
-            .catch(() => {
-                if (active) setSkipData(chapterSkip)
-            })
+            .catch(() => undefined)
 
         return () => {
             active = false
         }
-    }, [source?.media?.idMal, source?.episodeNumber, chapters, duration])
+    }, [aniskipKey, malId, epNum])
+
+    const fetched = aniskip !== null && aniskip.key === `${malId}/${epNum}` ? aniskip.data : null
+    const skipData: SkipData = {
+        op: chapterSkip.op || fetched?.op || null,
+        ed: chapterSkip.ed || fetched?.ed || null,
+    }
 
     React.useEffect(() => {
         if (!autoSkipOpEd) return

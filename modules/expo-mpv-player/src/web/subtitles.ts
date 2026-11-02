@@ -5,7 +5,7 @@
  * for when libass (libass.ts), which draws the styling and positioned signs
  * (\pos/\move/\p), is off or can't run.
  */
-import type { MpvSubtitleImage } from "../MpvPlayer.types"
+import type { MpvStreamedSubtitleLine, MpvSubtitleImage } from "../MpvPlayer.types"
 
 export type SubtitleCue = {
     start: number
@@ -209,4 +209,24 @@ export function activeCues(cues: readonly SubtitleCue[], time: number): Subtitle
         if (cue.end > time) active.push(cue)
     }
     return active
+}
+
+/** An image's data is long; its length and tail tell images apart. */
+function imageKey(image: SubtitleImage) {
+    return `${image.src.length}|${image.src.slice(-32)}`
+}
+
+/** What tells shown cues apart, to skip re-rendering the same ones. */
+export function cueKey(cue: SubtitleCue) {
+    return cue.image ? `${cue.start}:image:${imageKey(cue.image)}` : `${cue.start}:${cue.text}`
+}
+
+/**
+ * Identifies a streamed line, which the server sends again after every seek.
+ * Signs repeat the same text on several layers, so the ASS fields count too.
+ */
+export function streamedLineKey(line: MpvStreamedSubtitleLine) {
+    return line.image
+        ? `${line.start}|image|${imageKey(line.image)}`
+        : `${line.start}|${line.end}|${line.style ?? ""}|${line.ass ? Object.values(line.ass).join(",") : ""}|${line.text}`
 }

@@ -115,6 +115,26 @@ function isTorrentSource(source: MobilePlaybackSource | null | undefined) {
         || source?.nextEpisodeAction?.startsWith("torrentstream-")
 }
 
+type Handlers = Record<string, ((...args: any[]) => unknown) | undefined>
+
+/**
+ * Callbacks that keep their identity across renders and call this render's
+ * handler, so a memoized child (the TV settings panel) skips the re-render
+ * of every progress tick. The React Compiler doesn't optimize this screen.
+ */
+function useStableHandlers<T extends Handlers>(handlers: T): T {
+    const latest = React.useRef(handlers)
+    latest.current = handlers
+    const stable = React.useRef<Partial<T>>({})
+    const result: Partial<T> = {}
+    for (const key of Object.keys(handlers) as Array<keyof T>) {
+        if (!handlers[key]) continue
+        stable.current[key] ??= ((...args: unknown[]) => latest.current[key]?.(...args)) as T[keyof T]
+        result[key] = stable.current[key]
+    }
+    return result as T
+}
+
 export default function PlayerScreen() {
     return <PlayerScreenInner />
 }
@@ -1362,6 +1382,33 @@ function PlayerScreenInner() {
         requestAnimationFrame(() => { requestAnimationFrame(() => { player.startPiP() }) })
     }
 
+    // The TV settings panel (memoized) gets only what it shows and callbacks
+    // that keep their identity: the position ticking under it doesn't re-render it.
+    const tvPanelState = React.useMemo(() => ({
+        speed: state.speed,
+        audioTracks: state.audioTracks,
+        subtitleTracks: state.subtitleTracks,
+        subtitleDelay: state.subtitleDelay,
+        audioDelay: state.audioDelay,
+    }), [state.speed, state.audioTracks, state.subtitleTracks, state.subtitleDelay, state.audioDelay])
+    const tvPanelHandlers = useStableHandlers({
+        onClose: closeSettings,
+        onSetSpeed: handleSetSpeed,
+        onSubDelayChange: handleSubDelayChange,
+        onSubDelayReset: handleSubDelayReset,
+        onAudioDelayChange: handleAudioDelayChange,
+        onAudioDelayReset: handleAudioDelayReset,
+        onSetSubFontSize: handleSubFontSize,
+        onToggleAssRendering: Platform.OS === "web" ? () => {
+            updatePrefs({ assRendering: !prefs.assRendering })
+            player.setAssRendering(!prefs.assRendering)
+        } : undefined,
+        onToggleAutoNext: () => updatePrefs({ autoNextEpisode: !prefs.autoNextEpisode }),
+        onToggleAutoSkipOpEd: () => updatePrefs({ autoSkipOpEd: !prefs.autoSkipOpEd }),
+        onPlayEpisode: handleEpisodeSelect,
+        onSetVideoSource: handleVideoSource,
+    })
+
     // display calculations
     const displayTime = swipeSeek.swipeSeeking?.currentTime ?? seekingDisplay ?? state.currentTime
     const progressRatio = state.duration > 0 ? clamp(displayTime / state.duration, 0, 1) : 0
@@ -1386,6 +1433,8 @@ function PlayerScreenInner() {
 
     // seek bar animated styles
     React.useEffect(() => {
+        // The TV draws its own controls; on webOS this timing would run in JS on every tick.
+        if (Platform.isTV) return
         if (state.duration <= 0) {
             seekBarProgress.set(0)
             return
@@ -1395,6 +1444,7 @@ function PlayerScreenInner() {
     }, [isSeeking, progressRatio, seekBarProgress, state.duration])
 
     React.useEffect(() => {
+        if (Platform.isTV) return
         seekBarThumbScale.set(withTiming(isSeeking ? 1.35 : 1, { duration: 140 }))
         seekBarTrackHeight.set(withTiming(isSeeking ? 8 : 6, { duration: 140 }))
         seekBarGlowOpacity.set(withTiming(isSeeking ? 1 : 0, { duration: 180 }))
@@ -1731,32 +1781,18 @@ function PlayerScreenInner() {
                 {panel && !isPiPActive && (
                     Platform.isTV ? (
                         <TVPlayerPanel
+                            {...tvPanelHandlers}
                             panel={panel}
                             onNavigate={setPanel}
-                            onClose={closeSettings}
-                            state={state}
+                            state={tvPanelState}
                             prefs={prefs}
                             updatePrefs={updatePrefs}
-                            onSetSpeed={handleSetSpeed}
-                            onSubDelayChange={handleSubDelayChange}
-                            onSubDelayReset={handleSubDelayReset}
-                            onAudioDelayChange={handleAudioDelayChange}
-                            onAudioDelayReset={handleAudioDelayReset}
-                            onSetSubFontSize={handleSubFontSize}
                             onSetAudioTrack={player.setAudioTrack}
                             onSetSubtitleTrack={player.setSubtitleTrack}
-                            onToggleAssRendering={Platform.OS === "web" ? () => {
-                                updatePrefs({ assRendering: !prefs.assRendering })
-                                player.setAssRendering(!prefs.assRendering)
-                            } : undefined}
-                            onToggleAutoNext={() => updatePrefs({ autoNextEpisode: !prefs.autoNextEpisode })}
-                            onToggleAutoSkipOpEd={() => updatePrefs({ autoSkipOpEd: !prefs.autoSkipOpEd })}
                             episodes={source?.episodes}
                             currentEpisodeNumber={source?.episodeNumber}
-                            onPlayEpisode={handleEpisodeSelect}
                             videoSources={source?.onlineSources}
                             videoSource={source?.onlineSource}
-                            onSetVideoSource={handleVideoSource}
                         />
                     ) : (
                         <PlayerPanelOverlay

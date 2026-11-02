@@ -32,11 +32,14 @@ import Type from "lucide-react-native/icons/type"
 import * as React from "react"
 import { Animated, FlatList, Platform, Pressable, ScrollView, Text, TVFocusGuideView, View } from "react-native"
 
+/** What the panel shows of the player: not the position, which changes every second while it is open. */
+export type TVPlayerPanelState = Pick<PlayerState, "speed" | "audioTracks" | "subtitleTracks" | "subtitleDelay" | "audioDelay">
+
 type Props = {
     panel: PlayerPanel
     onNavigate: (panel: PlayerPanel) => void
     onClose: () => void
-    state: PlayerState
+    state: TVPlayerPanelState
     prefs: PlayerPreferences
     updatePrefs: (prefs: Partial<PlayerPreferences>) => void
     episodes?: Anime_Episode[]
@@ -76,7 +79,7 @@ const TITLES: Partial<Record<PlayerPanel, string>> = {
 
 const ICON = tvSize(21)
 
-export function TVPlayerPanel(props: Props) {
+export const TVPlayerPanel = React.memo(function TVPlayerPanel(props: Props) {
     const back = getBackPanel(props.panel)
     const title = TITLES[props.panel] ?? "Player settings"
 
@@ -114,7 +117,7 @@ export function TVPlayerPanel(props: Props) {
             <PanelContent {...props} preferred={back === null} />
         </TVDrawer>
     )
-}
+})
 
 function PanelContent(props: Props & { preferred: boolean }) {
     switch (props.panel) {
