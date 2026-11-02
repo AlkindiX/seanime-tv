@@ -10,7 +10,7 @@
  * TrueHD out of a file's audio tracks. A TV may also wait forever on audio
  * it doesn't take. Opus is listed for MKV from webOS 24 only.
  *
- * Samsung's Tizen TVs (2022 and later) list the same Dolby and AAC audio, no
+ * Samsung's Tizen TVs (2021 and later) list the same Dolby and AAC audio, no
  * TrueHD, and no DTS since 2018; FLAC is otherwise taken as on LG. That part
  * is from Samsung's specs and Jellyfin's Tizen profile, not checked on a TV.
  *

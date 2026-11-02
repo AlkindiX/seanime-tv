@@ -21,10 +21,10 @@ import { pathToFileURL } from "node:url"
 const require = createRequire(import.meta.url)
 const esbuild = require("esbuild")
 
-// webOS 6 (2021 TVs) ships Chromium 79.
+// webOS 6 (2021 TVs) ships Chromium 79; a build for older TVs passes its own target.
 const TARGET = "chrome79"
 
-export async function buildJassub(outDir) {
+export async function buildJassub(outDir, target = TARGET) {
     const dist = path.dirname(require.resolve("jassub"))
     fs.mkdirSync(outDir, { recursive: true })
 
@@ -32,7 +32,7 @@ export async function buildJassub(outDir) {
         bundle: true,
         minify: true,
         format: "iife",
-        target: TARGET,
+        target,
         legalComments: "none",
         // The worker runs from a blob: URL, which can't be a URL base; the URLs
         // built from this are never loaded (JASSUB is handed every file).

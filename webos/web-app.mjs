@@ -20,8 +20,8 @@ const coreJsCompat = require("core-js-compat")
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
-// webOS 6 (2021 LG TVs) ships Chromium 79; Samsung's 2022 TVs (Tizen 6.5) 85.
-// Later releases of both only move forward.
+// The oldest browser the app is lowered for, unless a build asks for another:
+// webOS 6 (2021 LG TVs) ships Chromium 79. Later releases only move forward.
 export const CHROME = 79
 
 export function walk(dir) {
@@ -78,11 +78,11 @@ function rewriteIndexHtml(file) {
     fs.writeFileSync(file, html)
 }
 
-async function lowerJs(file) {
+async function lowerJs(file, chrome) {
     const source = fs.readFileSync(file, "utf8").replaceAll("\"/assets/", "\"./assets/")
     const result = await esbuild.transform(source, {
         loader: "js",
-        target: `chrome${CHROME}`,
+        target: `chrome${chrome}`,
         // Metro's output is already minified; identifiers stay as they are.
         minifyWhitespace: true,
         minifySyntax: true,
@@ -164,7 +164,7 @@ function lowerLogicalShorthands(css, splitTopLevel) {
  * property defaults, the transform properties become `transform`, and the
  * logical shorthands (Chromium 87) become physical properties.
  */
-function lowerCss(file) {
+function lowerCss(file, chrome) {
     const source = fs.readFileSync(file, "utf8")
 
     const defaults = []
@@ -177,7 +177,7 @@ function lowerCss(file) {
         filename: path.basename(file),
         code: Buffer.from(flattenLayers(source)),
         minify: true,
-        targets: { chrome: CHROME << 16 },
+        targets: { chrome: chrome << 16 },
     })
 
     const splitTopLevel = (value) => {
@@ -206,7 +206,7 @@ function lowerCss(file) {
     })
     css = lowerLogicalShorthands(css, splitTopLevel)
     const left = css.match(LOGICAL_SHORTHAND)
-    if (left) throw new Error(`Logical shorthands Chromium ${CHROME} drops are still in ${path.basename(file)}: ${left.slice(0, 5).join(" ")}`)
+    if (left) throw new Error(`Logical shorthands Chromium ${chrome} drops are still in ${path.basename(file)}: ${left.slice(0, 5).join(" ")}`)
 
     if (defaults.length > 0) {
         css = `*,:before,:after{${defaults.join(";")}}${css}`
@@ -225,14 +225,14 @@ function lowerCss(file) {
  */
 const SKIPPED_POLYFILLS = /^(es\.json\.|es\.array\.push$|es\.error\.cause$|es\.aggregate-error\.cause$|web\.dom-exception\.stack$|es\.regexp\.flags$)/
 
-async function buildPolyfills(file, log) {
+async function buildPolyfills(file, chrome, log) {
     const { list: all } = coreJsCompat({
-        targets: { chrome: String(CHROME) },
+        targets: { chrome: String(chrome) },
         modules: ["core-js/stable"],
         version: require("core-js/package.json").version,
     })
     const list = all.filter(name => !SKIPPED_POLYFILLS.test(name))
-    log(`Bundling ${list.length} core-js polyfills for Chromium ${CHROME}…`)
+    log(`Bundling ${list.length} core-js polyfills for Chromium ${chrome}…`)
     await esbuild.build({
         stdin: {
             contents: list.map(name => `import "core-js/modules/${name}.js"`).join("\n"),
@@ -241,7 +241,7 @@ async function buildPolyfills(file, log) {
         bundle: true,
         minify: true,
         format: "iife",
-        target: `chrome${CHROME}`,
+        target: `chrome${chrome}`,
         legalComments: "none",
         outfile: file,
     })
@@ -251,9 +251,10 @@ async function buildPolyfills(file, log) {
 
 /**
  * Exports (unless `skipExport`) into `exportDir`, then fills `appDir` with the
- * web app ready for a TV: relative URLs, lowered JS and CSS, polyfills, JASSUB.
+ * web app ready for a TV: relative URLs, JS and CSS lowered for Chromium
+ * `chrome`, polyfills, JASSUB.
  */
-export async function buildWebApp({ exportDir, appDir, skipExport = false, log }) {
+export async function buildWebApp({ exportDir, appDir, skipExport = false, chrome = CHROME, log }) {
     if (!skipExport) exportWeb(exportDir, log)
     if (!fs.existsSync(path.join(exportDir, "index.html"))) {
         throw new Error(`No web export at ${exportDir}; run without --skip-export`)
@@ -266,10 +267,10 @@ export async function buildWebApp({ exportDir, appDir, skipExport = false, log }
 
     rewriteIndexHtml(path.join(appDir, "index.html"))
     for (const file of walk(appDir)) {
-        if (file.endsWith(".js")) await lowerJs(file)
-        else if (file.endsWith(".css")) lowerCss(file)
+        if (file.endsWith(".js")) await lowerJs(file, chrome)
+        else if (file.endsWith(".css")) lowerCss(file, chrome)
     }
-    await buildPolyfills(path.join(appDir, "polyfills.js"), log)
+    await buildPolyfills(path.join(appDir, "polyfills.js"), chrome, log)
     log("Bundling libass (JASSUB) for ASS subtitles…")
-    await buildJassub(path.join(appDir, "jassub"))
+    await buildJassub(path.join(appDir, "jassub"), `chrome${chrome}`)
 }

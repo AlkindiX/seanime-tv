@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds Seanime Tenji for Samsung Tizen TVs (2022 and later): `npm run build:tizen`
+ * Builds Seanime Tenji for Samsung Tizen TVs (2021 and later): `npm run build:tizen`
  *
  *   dist/tizen/app/                       the packaged web app (config.xml + files)
  *   dist/tizen/SeanimeTenji_<v>.wgt       unsigned package, for a tool that signs it (Apps2Samsung)
@@ -24,6 +24,9 @@ const tizenDir = path.join(root, "tizen")
 const outDir = path.join(root, "dist", "tizen")
 const exportDir = path.join(outDir, "www")
 const appDir = path.join(outDir, "app")
+// Samsung's 2021 TVs (Tizen 6.0) ship Chromium 76, older than webOS 6's 79;
+// config.xml's required_version keeps earlier TVs out.
+const CHROME = 76
 // Samsung shows any square icon; the app's own 512x512 one is sharp on a 4K launcher.
 const ICON = path.join(root, "src", "assets", "images", "icon.png")
 
@@ -134,7 +137,7 @@ async function main() {
     const iconSize = pngSize(ICON)
     if (!iconSize) throw new Error(`${path.relative(root, ICON)} is not a PNG`)
 
-    await buildWebApp({ exportDir, appDir, skipExport: args.has("--skip-export"), log })
+    await buildWebApp({ exportDir, appDir, skipExport: args.has("--skip-export"), chrome: CHROME, log })
 
     const config = fs.readFileSync(path.join(tizenDir, "config.xml"), "utf8").replace("{{VERSION}}", version)
     fs.writeFileSync(path.join(appDir, "config.xml"), config)

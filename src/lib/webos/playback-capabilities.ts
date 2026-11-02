@@ -4,7 +4,7 @@
  *
  * The rules follow LG's webOS 6 video spec: H.264 up to High profile (8-bit
  * 4:2:0 only, so no Hi10P), HEVC Main/Main10, VP9 and AV1. Samsung's specs
- * for its 2022 and later TVs list the same (audio differs, see tv-audio.ts). They err towards
+ * for its 2021 and later TVs list the same (audio differs, see tv-audio.ts). They err towards
  * direct play: a file that would play is never transcoded for a guess, and a
  * file that fails anyway falls back to transcoding when the decoder reports it.
  *

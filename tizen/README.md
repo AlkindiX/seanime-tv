@@ -10,9 +10,13 @@ Samsung's runtime. See [Not yet verified on a TV](#not-yet-verified-on-a-tv).
 
 ## Requirements
 
-- **A 2022 Samsung TV or newer** (Tizen 6.5, Chromium 85). `config.xml` asks for Tizen 6.5,
-  so older TVs refuse to install it. The build targets Chromium 79 for webOS, so 2022+
-  Samsung browsers have everything it uses, flexbox `gap` included.
+- **A 2021 Samsung TV or newer** (Tizen 6.0, Chromium 76). `config.xml` asks for Tizen 6.0,
+  so older TVs refuse to install it, and the Tizen build lowers JS, CSS and polyfills for
+  Chromium 76 (the webOS build stays at 79). 2022 and later TVs (Tizen 6.5, Chromium 85+)
+  are recommended: 2021 models lack CSS flexbox `gap` (Chromium 84), which the app uses for
+  most of its spacing, so many screens look cramped there, as on webOS 6. Everything still
+  works. 2020 and older TVs aren't supported: Chromium 69 and older would need much more
+  lowering, and before 2020 Samsung TVs have no WebAssembly, which ASS subtitles need.
 - **Maybe a server password.** Try without one first. The app runs from `file://`, and a
   Seanime server without a password refuses requests whose origin it doesn't trust. What a
   Samsung TV sends as the origin isn't known for sure (reports say `file://` on some models
@@ -89,7 +93,7 @@ closing; this sideloaded app doesn't.
 
 Same player as webOS (HTML5 `<video>`, libass for ASS subtitles, the server's transcode for
 library files the TV can't decode). The rules for what plays directly are LG's, which
-Samsung's specs for 2022+ TVs match for video (H.264 8-bit, HEVC Main/Main10, VP9, AV1).
+Samsung's specs for 2021+ TVs match for video (H.264 8-bit, HEVC Main/Main10, VP9, AV1).
 Audio differs: Samsung TVs play no DTS, so a DTS track counts as silent, and TrueHD stays in
 the track list (webOS hides it). Messages name Samsung instead of LG.
 
