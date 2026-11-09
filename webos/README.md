@@ -199,15 +199,20 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
   forward by the seek step, next episode, audio & subtitles, settings and episodes
   around it). Play/pause has focus when the controls come up; the focused button turns
   white and shows its name under it. The controls fade in.
-- **Seeking (scrubbing).** Left/right don't seek the video on every press: they move a
+- **Seeking with the controls hidden.** Left/right and ⏩/⏪ seek at once by the seek step
+  and show a round bubble on that side with how far it went (`+30s`); presses in the same
+  direction add up while it shows. The controls stay hidden. Holding left/right keeps
+  seeking, faster the longer it is held (`src/lib/player/seek-bubble.ts`,
+  `tv-seek-bubble.tsx`).
+- **Seeking (scrubbing) on the seek bar.** With the controls up and the seek bar focused,
+  left/right don't seek the video on every press: they move a
   target on the seek bar, shown with its time and how far it is from where you were
   (`+30s`), and Tenji seeks once, about 0.7 s after the last press, or at once on OK.
   Each seek of a torrent stream makes the server fetch from a new spot and restart its
   subtitle reading, so ten quick presses are one seek. Holding left/right moves the
   target faster the longer it is held (a full episode in about eight seconds at top
-  speed). Back while a target is showing drops it and does nothing else. With the
-  controls hidden, left/right bring them up on the seek bar and start scrubbing right
-  away; the rewind/forward buttons and ⏩/⏪ move the target too. Until the seek lands,
+  speed). Back while a target is showing drops it and does nothing else. The
+  rewind/forward buttons move the target too. Until the seek lands,
   the bar stays on the target. Without a known duration, the presses add up to one
   relative seek.
 - **Torrent stream stats.** With the controls up, a pill at the top right shows the
@@ -417,7 +422,7 @@ The arrow keys, OK and Back work as on Android TV. LG remotes also have these ke
 | Stop | Leave the player and end the stream (Back keeps it running; see Playback) | |
 | CH+ / CH- | Next / previous episode (asks first when much of the episode is left) | Page up / down through a list or grid |
 | 0 to 9 | Jump to 0 %, 10 % … 90 % of the episode | Type into a text field |
-| Play, Pause, ⏩, ⏪ | Play, pause, move the seek target (see Seeking) | |
+| Play, Pause, ⏩, ⏪ | Play, pause; ⏩/⏪ seek at once by the seek step (see Seeking) | |
 
 Android TV remotes that have these keys get the same player shortcuts.
 
