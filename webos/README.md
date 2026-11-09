@@ -429,8 +429,10 @@ D-pad highlight comes back.
 
 **Dragging.** Press the wheel (OK) on a row and move the pointer to drag the row sideways,
 or on the page to drag it up and down; let go while moving and it glides on a little. A
-press that moves less than 12 px is a click, and the click that ends a drag doesn't open
-the card under the pointer.
+press that moves less than 12 px is a click, or less than 40 px on a button or card:
+pressing the wheel tilts the remote and moves the pointer, and at 12 px a button often
+took several presses. Such a press still clicks its button when the release slipped off
+it. The click that ends a drag doesn't open the card under the pointer.
 
 **Pausing with the wheel.** The wheel is the OK button. In the player, pressing it while
 the controls are hidden pauses or plays (and shows them); with the pointer showing, so
