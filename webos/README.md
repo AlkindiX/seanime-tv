@@ -280,7 +280,12 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
   a TV*: desktop Chromium plays the `<source>` but ignores the option, so the checks covered
   passing the position, the seek that follows and the fallback, not the speed-up.
 - **Audio tracks** can be switched when the TV exposes them, which webOS does (since
-  webOS 3). A track the TV plays silently is left on its own (see FLAC audio).
+  webOS 3). A track the TV plays silently is left on its own (see FLAC audio). The
+  preferred audio languages (Japanese by default, as in Seanime's own players; Denshi
+  keeps its setting in the app, so Tenji can't read it) are checked again whenever the
+  TV reports more tracks or their languages, until you pick a track yourself. Checking
+  only the first time missed files whose subtitles were listed before their audio, which
+  then played the file's default track (often English).
 - **Subtitles** are drawn by the app.
   - **ASS/SSA** are drawn by libass, as mpv does on the other builds: fonts (the ones the
     file carries, from the server), styling, signs, positioning and animation. libass runs
