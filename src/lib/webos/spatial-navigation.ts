@@ -307,6 +307,17 @@ export function focusInitial() {
 }
 
 /**
+ * Focuses `el` again when a screen comes back (Back), if it is still on the
+ * visible screen and nothing there has taken focus in the meantime.
+ */
+export function restoreFocus(el: HTMLElement | null) {
+    if (!el || getFocusedElement()) return false
+    const root = getFocusRoot()
+    if (!root.contains(el) || inHiddenScreen(el) || !isFocusable(el, root)) return false
+    return focusElement(el)
+}
+
+/**
  * The focused element, or null when focus is nowhere the D-pad can see: on
  * <body>, outside the active modal, or left behind on a screen the navigator
  * has since hidden (Back from a tab, a screen under a pushed one). OK must not

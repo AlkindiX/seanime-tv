@@ -382,6 +382,10 @@ transcoding.
   opening a page slides it in from the right and Back eases the previous one in from the
   left. They are Web Animations on opacity and transform, which the TV composites without
   JavaScript per frame (`src/components/tv/tv-screen-transition.tsx`).
+- **Back keeps your place.** Each page remembers the card or button that last had focus;
+  Back returns focus to it, with the list and row scrolled where they were, as on
+  Android TV. Before, focus went to the first control on screen (the search box or the
+  top row) (`tv-screen-transition.tsx`, `restoreFocus` in `spatial-navigation.ts`).
 - **Library hero.** The backdrop cross-fades between titles, the text eases in, and the
   current page dot fills up until the next title. It doesn't rotate while one of its
   buttons has focus. Its buttons stay in place whatever the title's length. Watch progress

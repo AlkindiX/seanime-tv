@@ -1,4 +1,5 @@
 import { tvSize } from "@/components/tv/tv-scale"
+import { restoreFocus } from "@/lib/webos/spatial-navigation"
 import * as React from "react"
 import { Platform, View } from "react-native"
 
@@ -69,8 +70,26 @@ export function useTVTabTransition(tab: string | undefined) {
 function StackTransition({ route, navigation, children }: ScreenLayoutProps) {
     const ref = React.useRef<React.ComponentRef<typeof View>>(null)
     const shownBefore = React.useRef(false)
+    const lastFocused = React.useRef<HTMLElement | null>(null)
+
+    // The control last focused on this screen, to return to after Back. Native
+    // TV focus stays on the screen underneath by itself; in a browser it falls
+    // to <body> when the page on top closes, and the lost-focus check then
+    // picked the first control on screen (the search box, the top row), far
+    // from the card that was opened. The browser keeps the hidden screen's
+    // scroll offsets, so focusing that card again puts everything back.
+    React.useEffect(() => {
+        const node = ref.current as unknown as HTMLElement | null
+        if (!node) return
+        const onFocusIn = (event: FocusEvent) => {
+            if (event.target instanceof HTMLElement) lastFocused.current = event.target
+        }
+        node.addEventListener("focusin", onFocusIn)
+        return () => node.removeEventListener("focusin", onFocusIn)
+    }, [])
 
     React.useEffect(() => navigation.addListener("focus", () => {
+        if (shownBefore.current) restoreFocus(lastFocused.current)
         if (INSTANT_ROUTES.has(route.name)) return
         if (!shownBefore.current) {
             shownBefore.current = true
