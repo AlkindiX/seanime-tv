@@ -199,15 +199,20 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
   forward by the seek step, next episode, audio & subtitles, settings and episodes
   around it). Play/pause has focus when the controls come up; the focused button turns
   white and shows its name under it. The controls fade in.
-- **Seeking (scrubbing).** Left/right don't seek the video on every press: they move a
+- **Seeking with the controls hidden.** Left/right and ⏩/⏪ seek at once by the seek step
+  and show a round bubble on that side with how far it went (`+30s`); presses in the same
+  direction add up while it shows. The controls stay hidden. Holding left/right keeps
+  seeking, faster the longer it is held (`src/lib/player/seek-bubble.ts`,
+  `tv-seek-bubble.tsx`).
+- **Seeking (scrubbing) on the seek bar.** With the controls up and the seek bar focused,
+  left/right don't seek the video on every press: they move a
   target on the seek bar, shown with its time and how far it is from where you were
   (`+30s`), and Tenji seeks once, about 0.7 s after the last press, or at once on OK.
   Each seek of a torrent stream makes the server fetch from a new spot and restart its
   subtitle reading, so ten quick presses are one seek. Holding left/right moves the
   target faster the longer it is held (a full episode in about eight seconds at top
-  speed). Back while a target is showing drops it and does nothing else. With the
-  controls hidden, left/right bring them up on the seek bar and start scrubbing right
-  away; the rewind/forward buttons and ⏩/⏪ move the target too. Until the seek lands,
+  speed). Back while a target is showing drops it and does nothing else. The
+  rewind/forward buttons move the target too. Until the seek lands,
   the bar stays on the target. Without a known duration, the presses add up to one
   relative seek.
 - **Torrent stream stats.** With the controls up, a pill at the top right shows the
@@ -275,7 +280,12 @@ The built-in player is the TV's HTML5 video engine, not libmpv.
   a TV*: desktop Chromium plays the `<source>` but ignores the option, so the checks covered
   passing the position, the seek that follows and the fallback, not the speed-up.
 - **Audio tracks** can be switched when the TV exposes them, which webOS does (since
-  webOS 3). A track the TV plays silently is left on its own (see FLAC audio).
+  webOS 3). A track the TV plays silently is left on its own (see FLAC audio). The
+  preferred audio languages (Japanese by default, as in Seanime's own players; Denshi
+  keeps its setting in the app, so Tenji can't read it) are checked again whenever the
+  TV reports more tracks or their languages, until you pick a track yourself. Checking
+  only the first time missed files whose subtitles were listed before their audio, which
+  then played the file's default track (often English).
 - **Subtitles** are drawn by the app.
   - **ASS/SSA** are drawn by libass, as mpv does on the other builds: fonts (the ones the
     file carries, from the server), styling, signs, positioning and animation. libass runs
@@ -382,6 +392,10 @@ transcoding.
   opening a page slides it in from the right and Back eases the previous one in from the
   left. They are Web Animations on opacity and transform, which the TV composites without
   JavaScript per frame (`src/components/tv/tv-screen-transition.tsx`).
+- **Back keeps your place.** Each page remembers the card or button that last had focus;
+  Back returns focus to it, with the list and row scrolled where they were, as on
+  Android TV. Before, focus went to the first control on screen (the search box or the
+  top row) (`tv-screen-transition.tsx`, `restoreFocus` in `spatial-navigation.ts`).
 - **Library hero.** The backdrop cross-fades between titles, the text eases in, and the
   current page dot fills up until the next title. It doesn't rotate while one of its
   buttons has focus. Its buttons stay in place whatever the title's length. Watch progress
@@ -413,7 +427,7 @@ The arrow keys, OK and Back work as on Android TV. LG remotes also have these ke
 | Stop | Leave the player and end the stream (Back keeps it running; see Playback) | |
 | CH+ / CH- | Next / previous episode (asks first when much of the episode is left) | Page up / down through a list or grid |
 | 0 to 9 | Jump to 0 %, 10 % … 90 % of the episode | Type into a text field |
-| Play, Pause, ⏩, ⏪ | Play, pause, move the seek target (see Seeking) | |
+| Play, Pause, ⏩, ⏪ | Play, pause; ⏩/⏪ seek at once by the seek step (see Seeking) | |
 
 Android TV remotes that have these keys get the same player shortcuts.
 
@@ -425,8 +439,10 @@ D-pad highlight comes back.
 
 **Dragging.** Press the wheel (OK) on a row and move the pointer to drag the row sideways,
 or on the page to drag it up and down; let go while moving and it glides on a little. A
-press that moves less than 12 px is a click, and the click that ends a drag doesn't open
-the card under the pointer.
+press that moves less than 12 px is a click, or less than 40 px on a button or card:
+pressing the wheel tilts the remote and moves the pointer, and at 12 px a button often
+took several presses. Such a press still clicks its button when the release slipped off
+it. The click that ends a drag doesn't open the card under the pointer.
 
 **Pausing with the wheel.** The wheel is the OK button. In the player, pressing it while
 the controls are hidden pauses or plays (and shows them); with the pointer showing, so

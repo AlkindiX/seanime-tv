@@ -126,6 +126,9 @@ export function useMpvPlayer() {
     // external subtitles are added after the file loads, so the preferred track is checked again as they appear
     const checkedSubtitleTrackCount = React.useRef(0)
     const hasUserChosenSubtitle = React.useRef(false)
+    // Audio tracks are checked again whenever their languages change (see the auto-select effect)
+    const checkedAudioTracks = React.useRef("")
+    const hasUserChosenAudio = React.useRef(false)
 
     // debounce isLoading -> "buffering" to avoid spinner flashing during seeks
     const bufferingTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -210,6 +213,8 @@ export function useMpvPlayer() {
         hasAppliedPrefs.current = false
         checkedSubtitleTrackCount.current = 0
         hasUserChosenSubtitle.current = false
+        checkedAudioTracks.current = ""
+        hasUserChosenAudio.current = false
         if (bufferingTimerRef.current !== null) {
             clearTimeout(bufferingTimerRef.current)
             bufferingTimerRef.current = null
@@ -240,6 +245,7 @@ export function useMpvPlayer() {
         tracksLogRef.current = null
         hasAppliedDefaultTracks.current = false
         hasAppliedPrefs.current = false
+        checkedAudioTracks.current = ""
         setState(s => ({ ...s, status: "loading", audioTracks: [], subtitleTracks: [], chapters: [] }))
     }, [source, videoSource])
 
@@ -538,7 +544,18 @@ export function useMpvPlayer() {
 
         if (!hasAppliedDefaultTracks.current) {
             hasAppliedDefaultTracks.current = true
+            if (!prefs.showSubtitles) {
+                runNativeCommand("disableSubtitles", ref => ref.disableSubtitles())
+            }
+        }
 
+        // Checked again whenever the audio tracks change, until one is picked by hand:
+        // the web player can report subtitles before the file's audio tracks, or a
+        // track before its language, and checking only the first time left the
+        // file's default track playing (often English) on webOS.
+        const audioKey = state.audioTracks.map(track => `${track.id}:${track.language ?? ""}:${track.title ?? ""}`).join("|")
+        if (!hasUserChosenAudio.current && audioKey !== checkedAudioTracks.current) {
+            checkedAudioTracks.current = audioKey
             // Not a track the TV plays no sound for (the web player has left it already).
             const preferredAudio = findPreferredTrack(state.audioTracks.filter(track => !track.unplayable), prefs.preferredAudioLanguages)
             if (preferredAudio !== null) {
@@ -547,10 +564,6 @@ export function useMpvPlayer() {
                     log.info(`Auto-selecting preferred audio track: ${preferredAudio}`)
                     runNativeCommand("setAudioTrack", nativeRef => nativeRef.setAudioTrack(preferredAudio))
                 }
-            }
-
-            if (!prefs.showSubtitles) {
-                runNativeCommand("disableSubtitles", ref => ref.disableSubtitles())
             }
         }
 
@@ -609,6 +622,7 @@ export function useMpvPlayer() {
     }, [runNativeCommand])
 
     const setAudioTrack = React.useCallback((trackId: number) => {
+        hasUserChosenAudio.current = true
         runNativeCommand("setAudioTrack", ref => ref.setAudioTrack(trackId))
         setState(s => ({
             ...s,
@@ -655,6 +669,8 @@ export function useMpvPlayer() {
         hasAppliedPrefs.current = false
         checkedSubtitleTrackCount.current = 0
         hasUserChosenSubtitle.current = false
+        checkedAudioTracks.current = ""
+        hasUserChosenAudio.current = false
         if (bufferingTimerRef.current !== null) {
             clearTimeout(bufferingTimerRef.current)
             bufferingTimerRef.current = null

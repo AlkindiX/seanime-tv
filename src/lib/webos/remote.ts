@@ -331,6 +331,14 @@ function emitPointerClick() {
 
 /** Travel before a press becomes a drag; less is a click from an unsteady hand. */
 const DRAG_THRESHOLD_PX = 12
+/**
+ * The same on a control (a button, a card). Pressing the wheel tilts the
+ * Magic Remote, and its pointer follows the tilt: a press on a button often
+ * travelled past 12 px, dragged the page a little and lost its click, so
+ * buttons took several presses. Rows and the page still drag from a card,
+ * after this much travel.
+ */
+const CONTROL_DRAG_THRESHOLD_PX = 40
 /** Speed is measured over the last part of a drag. */
 const FLING_SAMPLE_MS = 100
 /** A released drag glides on by its speed (px/ms) times this. */
@@ -344,6 +352,7 @@ type Drag = {
     startX: number
     startY: number
     target: Element
+    threshold: number
     scroller: HTMLElement | null
     axis: "x" | "y"
     origin: number
@@ -353,10 +362,23 @@ type Drag = {
 let drag: Drag | null = null
 let swallowClickUntil = 0
 
+/**
+ * The control a press started on. The browser clicks only what both the
+ * press and the release are on, so a press whose release slipped off its
+ * button (the tilt again) clicked the page behind it; that control gets the
+ * click instead.
+ */
+let pressedControl: { element: HTMLElement; x: number; y: number } | null = null
+let slippedClick: HTMLElement | null = null
+
 function onDragStart(event: MouseEvent) {
     drag = null
+    pressedControl = null
     if (event.button !== 0 || !(event.target instanceof Element) || isTextField(event.target)) return
-    drag = { startX: event.clientX, startY: event.clientY, target: event.target, scroller: null, axis: "x", origin: 0, samples: [] }
+    const control = event.target.closest<HTMLElement>(HOVER_FOCUSABLE)
+    const threshold = control ? CONTROL_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX
+    drag = { startX: event.clientX, startY: event.clientY, target: event.target, threshold, scroller: null, axis: "x", origin: 0, samples: [] }
+    if (control) pressedControl = { element: control, x: event.clientX, y: event.clientY }
 }
 
 function onDragMove(event: MouseEvent) {
@@ -372,7 +394,7 @@ function onDragMove(event: MouseEvent) {
     if (!scroller) {
         const dx = event.clientX - current.startX
         const dy = event.clientY - current.startY
-        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+        if (Math.hypot(dx, dy) < current.threshold) return
         // A row drags sideways, the page up and down: whichever way the pointer went most.
         const axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y"
         scroller = scrollableAncestor(current.target, axis)
@@ -389,7 +411,7 @@ function onDragMove(event: MouseEvent) {
 
     // The list follows the pointer, less the threshold so it doesn't jump when the drag starts.
     const travel = current.axis === "x" ? event.clientX - current.startX : event.clientY - current.startY
-    const position = current.origin - Math.sign(travel) * Math.max(0, Math.abs(travel) - DRAG_THRESHOLD_PX)
+    const position = current.origin - Math.sign(travel) * Math.max(0, Math.abs(travel) - current.threshold)
     if (current.axis === "x") scroller.scrollLeft = position
     else scroller.scrollTop = position
 
@@ -416,7 +438,26 @@ function endDrag(time: number) {
 }
 
 function onDragEnd(event: MouseEvent) {
-    if (event.button === 0) endDrag(event.timeStamp)
+    if (event.button !== 0) return
+    const pressed = pressedControl
+    pressedControl = null
+    const dragged = !!drag?.scroller
+    endDrag(event.timeStamp)
+
+    if (
+        !pressed
+        || dragged
+        || !pressed.element.isConnected
+        || (event.target instanceof Node && pressed.element.contains(event.target))
+        || Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) >= CONTROL_DRAG_THRESHOLD_PX
+    ) return
+    slippedClick = pressed.element
+    // After the browser's own click (on whatever is under both), which onClick drops.
+    setTimeout(() => {
+        const control = slippedClick
+        slippedClick = null
+        if (control?.isConnected) control.click()
+    }, 0)
 }
 
 /** Clicks: none after a drag (it would open the card it ended on); the rest may be a pointer click. */
@@ -426,6 +467,17 @@ function onClick(event: MouseEvent) {
         event.preventDefault()
         event.stopPropagation()
         return
+    }
+    if (slippedClick) {
+        if (event.target instanceof Node && slippedClick.contains(event.target)) {
+            // The browser clicked the control after all.
+            slippedClick = null
+        } else {
+            // The click of a press that slipped off its control: the control gets it (onDragEnd).
+            event.preventDefault()
+            event.stopPropagation()
+            return
+        }
     }
     if (!pointerMode || !(event.target instanceof Element)) return
     if (event.target.closest(HOVER_FOCUSABLE)) return

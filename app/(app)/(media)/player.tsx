@@ -41,6 +41,7 @@ import { type NextStreamRequest, PlayerNextStream, PlayerNextStreamProgress } fr
 import { TVPlayerControls, TVPlayerDialog, TVPlayerPanel } from "@/components/tv"
 import { playPlayerExit } from "@/components/tv/tv-player-exit"
 import { tvSize } from "@/components/tv/tv-scale"
+import { TVSeekBubble } from "@/components/tv/tv-seek-bubble"
 import { useTVScrub } from "@/components/tv/use-tv-scrub"
 import { isLocalServer } from "@/lib/downloads"
 import { useIsServerConnected } from "@/lib/offline"
@@ -57,6 +58,7 @@ import { getLocalEpisodePlaybackSource } from "@/lib/player"
 import { endKeptStream } from "@/lib/player/kept-direct-stream"
 import { usePlayerPreferences } from "@/lib/player/player-preferences"
 import { getWatchHistoryResumePosition } from "@/lib/player/resume-position"
+import { createSeekBubble } from "@/lib/player/seek-bubble"
 import type { MobilePlaybackSource } from "@/lib/player/types"
 import { useContinuitySync } from "@/lib/player/use-continuity-sync"
 import { useMpvPlayer } from "@/lib/player/use-mpv-player"
@@ -445,13 +447,21 @@ function PlayerScreenInner() {
         if (controls.controlsVisible) controls.scheduleHide()
     }, [controls.controlsVisible, controls.scheduleHide])
 
+    // webOS: Left/Right and the fast-forward/rewind keys seek at once and show
+    // how far in a bubble on that side, without bringing up the controls.
+    const [seekBubble] = React.useState(createSeekBubble)
+    const seekWithBubble = React.useCallback((seconds: number) => {
+        player.seekRelative(seconds)
+        seekBubble.add(seconds)
+    }, [player.seekRelative, seekBubble])
+
     const tvLongSeek = useTVLongSeek({
         enabled: Platform.isTV
             && !panel
             && !nextEpisodePrompt
             && !showExitPrompt
             && !state.isPiPActive,
-        seek: player.seekRelative,
+        seek: Platform.OS === "web" ? seekWithBubble : player.seekRelative,
         touch: touchTVSeek,
     })
 
@@ -915,8 +925,14 @@ function PlayerScreenInner() {
         if (event.eventType === "fastForward" || event.eventType === "rewind") {
             if (tvKeyAction(event) === 0) return
             const direction = event.eventType === "fastForward" ? 1 : -1
-            if (Platform.OS === "web") scrub.nudge(direction)
-            else player.seekRelative(direction * prefs.buttonSeekSec)
+            if (Platform.OS === "web") {
+                // A pending target from the seek bar would seek away from this.
+                scrub.reset()
+                seekWithBubble(direction * prefs.buttonSeekSec)
+                touchTVSeek()
+                return
+            }
+            player.seekRelative(direction * prefs.buttonSeekSec)
             controls.showControls()
             return
         }
@@ -924,10 +940,12 @@ function PlayerScreenInner() {
         if (event.eventType === "longLeft" || event.eventType === "longRight") {
             const direction = event.eventType === "longLeft" ? -1 : 1
             if (Platform.OS === "web") {
-                // Holding scrubs here while the controls are hidden, and from the
-                // seek bar in TVPlayerControls; on the buttons it only moves focus.
+                // Holding seeks faster and faster here while the controls are hidden
+                // (the bubble adds it up), and scrubs from the seek bar in
+                // TVPlayerControls; on the buttons it only moves focus.
                 if (tvKeyAction(event) === 1) {
                     scrub.release()
+                    tvLongSeek.stop()
                 } else if (
                     tvKeyAction(event) === 0
                     && !controls.controlsVisible
@@ -935,8 +953,7 @@ function PlayerScreenInner() {
                     && !nextEpisodePrompt
                     && !showExitPrompt
                 ) {
-                    scrub.hold(direction)
-                    controls.showControls()
+                    tvLongSeek.start(direction)
                 }
                 return
             }
@@ -955,16 +972,16 @@ function PlayerScreenInner() {
 
         if (panel || nextEpisodePrompt || showExitPrompt) return
 
-        // webOS: left/right with the controls hidden bring them up on the seek
-        // bar and start scrubbing on the press itself, not on its release.
+        // webOS: left/right with the controls hidden seek at once, on the press
+        // itself rather than its release, and show the seek bubble.
         if (
             Platform.OS === "web"
             && !controls.controlsVisible
             && (event.eventType === "left" || event.eventType === "right")
         ) {
             if (tvKeyAction(event) === 0) {
-                scrub.nudge(event.eventType === "left" ? -1 : 1)
-                controls.showControls()
+                scrub.reset()
+                seekWithBubble((event.eventType === "left" ? -1 : 1) * prefs.buttonSeekSec)
             }
             return
         }
@@ -1652,6 +1669,8 @@ function PlayerScreenInner() {
                     </GestureDetector>
                 )}
 
+
+                {Platform.OS === "web" && !isPiPActive ? <TVSeekBubble store={seekBubble} /> : null}
 
                 {!isPiPActive && (
                     Platform.isTV ? (
